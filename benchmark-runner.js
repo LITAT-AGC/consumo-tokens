@@ -3,7 +3,6 @@ const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fet
 const fs = require('fs/promises');
 const path = require('path');
 const { createRun, finishRun, saveResult } = require('./database');
-const { calculateLocalTokens, compareTokenCounts, getAvailableTokenizers } = require('./local-tokenizers');
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const BASE_URL = 'https://openrouter.ai/api/v1';
@@ -21,6 +20,60 @@ const RETRY_BASE_DELAY_MS = Number.parseInt(process.env.RETRY_BASE_DELAY_MS || '
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Consulta el endpoint /api/v1/generation para obtener los tokens nativos del proveedor
+async function fetchNativeTokens(generationId) {
+  if (!generationId) return null;
+
+  // Esperar un poco para que OpenRouter procese la generación
+  await sleep(5000);
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const response = await fetch(`${BASE_URL}/generation?id=${encodeURIComponent(generationId)}`, {
+        headers: {
+          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+          'HTTP-Referer': SITE_URL,
+          'X-Title': SITE_NAME
+        }
+      });
+
+      if (response.status === 404) {
+        // La generación aún no está disponible, reintentar
+        if (attempt < 2) {
+          console.warn(`   ⚠️  /generation 404 (intento ${attempt + 1}), reintentando...`);
+          await sleep(5000);
+          continue;
+        }
+        console.warn(`   ⚠️  /generation 404 tras 3 intentos para ${generationId}`);
+        console.warn(`   ℹ️  Esto es normal para algunos modelos - continuando sin tokens nativos`);
+        return null;
+      }
+
+      if (!response.ok) {
+        const errBody = await response.text().catch(() => '');
+        console.warn(`   ⚠️  /generation status ${response.status}: ${errBody.substring(0, 200)}`);
+        return null;
+      }
+
+      const data = await response.json();
+      const gen = data.data || data;
+
+      return {
+        native_input: gen.native_tokens_prompt ?? null,
+        native_output: gen.native_tokens_completion ?? null,
+        native_reasoning: gen.native_tokens_reasoning ?? null,
+        native_cached: gen.native_tokens_cached ?? null,
+        tokens_prompt: gen.tokens_prompt ?? null,
+        tokens_completion: gen.tokens_completion ?? null
+      };
+    } catch (error) {
+      console.warn(`   ⚠️  Error consultando /generation (intento ${attempt + 1}): ${error.message}`);
+      if (attempt < 2) await sleep(2000);
+    }
+  }
+  return null;
 }
 
 async function loadTestCasesFromMarkdown() {
@@ -165,7 +218,8 @@ async function callOpenRouter(modelId, prompt, maxTokens = 300, temperature = 0.
         input: data.usage?.prompt_tokens || 0,
         output: data.usage?.completion_tokens || 0,
         total: data.usage?.total_tokens || 0,
-        content: data.choices?.[0]?.message?.content || null
+        content: data.choices?.[0]?.message?.content || null,
+        generationId: data.id || null
       };
     } catch (error) {
       if (error?.name === 'AbortError') {
@@ -193,20 +247,6 @@ class BenchmarkRunner {
     try {
       console.log(`\n🚀 Iniciando benchmark [${this.source}] con ${this.models.length} modelo(s)`);
       this.models.forEach(m => console.log(`   - ${m.name} (${m.id})`));
-
-      // Verificar tokenizadores locales disponibles
-      const availableTokenizers = getAvailableTokenizers();
-      if (availableTokenizers.hasAny) {
-        console.log('\n🔍 Tokenizadores locales disponibles:');
-        if (availableTokenizers.tiktoken) console.log('   ✅ tiktoken (OpenAI/GPT)');
-        if (availableTokenizers.anthropic) console.log('   ✅ @anthropic-ai/tokenizer (Claude)');
-        if (availableTokenizers.transformers) console.log('   ✅ @xenova/transformers (modelos chinos)');
-        console.log('   → Se compararán conteos locales vs. OpenRouter');
-      } else {
-        console.log('\n⚠️  No hay tokenizadores locales instalados');
-        console.log('   → Los resultados dependerán únicamente de OpenRouter');
-        console.log('   → Instalar con: npm install tiktoken @anthropic-ai/tokenizer');
-      }
 
       this.testCases = await loadTestCasesFromMarkdown();
       this.totalTests = this.models.length * this.testCases.length;
@@ -245,16 +285,22 @@ class BenchmarkRunner {
           });
 
           try {
-            // 1. Calcular tokens localmente ANTES de enviar (fuente de verdad)
-            const localTokens = await calculateLocalTokens(testCase.prompt, model.id);
-
             await sleep(INVOCATION_DELAY_MS);
 
-            // 2. Llamar a OpenRouter
+            // 1. Llamar a OpenRouter
             const usage = await callOpenRouter(model.id, testCase.prompt, maxTokens, temperature);
 
-            // 3. Comparar conteos locales vs. OpenRouter
-            const comparison = compareTokenCounts(localTokens.tokens, usage.input);
+            // 2. Consultar tokens nativos vía /generation
+            let nativeData = null;
+            if (usage.generationId) {
+              console.log(`   🔍 Consultando tokens nativos para ${usage.generationId}...`);
+              nativeData = await fetchNativeTokens(usage.generationId);
+              if (nativeData) {
+                console.log(`   📋 Nativos: input=${nativeData.native_input}, output=${nativeData.native_output}`);
+              } else {
+                console.log(`   ⚠️  No se pudieron obtener tokens nativos`);
+              }
+            }
 
             const resultData = {
               model: model.name,
@@ -264,25 +310,21 @@ class BenchmarkRunner {
               total: usage.total,
               prompt_text: testCase.prompt,
               response_text: usage.content,
-              local_input: localTokens.tokens,
-              local_method: localTokens.method,
-              local_confidence: localTokens.confidence,
-              token_diff: comparison.difference,
-              token_diff_pct: comparison.percentDiff
+              native_input: nativeData?.native_input ?? null,
+              native_output: nativeData?.native_output ?? null,
+              native_reasoning: nativeData?.native_reasoning ?? null,
+              native_cached: nativeData?.native_cached ?? null,
+              generation_id: usage.generationId || null
             };
 
             saveResult(this.runId, resultData);
 
             this.completedTests++;
 
-            // Log mejorado con comparación
+            // Log resultado
             let logMsg = `   ✅ ${model.name} [${testCase.lang}] => ${usage.total} tokens`;
-            if (localTokens.tokens !== null) {
-              const diffSymbol = comparison.difference > 0 ? '+' : '';
-              logMsg += ` (local: ${localTokens.tokens}, diff: ${diffSymbol}${comparison.difference || 0})`;
-              if (comparison.status === 'major-discrepancy') {
-                logMsg += ' ⚠️';
-              }
+            if (nativeData?.native_input !== null && nativeData?.native_input !== undefined) {
+              logMsg += ` [nativo: ${nativeData.native_input}]`;
             }
             logMsg += ` (${this.completedTests}/${this.totalTests})`;
             console.log(logMsg);

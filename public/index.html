@@ -597,13 +597,13 @@
                 <th>Idioma</th>
                 <th class="text-end">Input (OR)</th>
                 <th class="text-end">
-                  <span data-bs-toggle="tooltip" title="Tokens calculados localmente (fuente de verdad)">
-                    Local 🔍
+                  <span data-bs-toggle="tooltip" title="Tokens nativos del proveedor (vía /generation endpoint)">
+                    Nativo 🏷️
                   </span>
                 </th>
                 <th class="text-end">
-                  <span data-bs-toggle="tooltip" title="Diferencia: OpenRouter - Local">
-                    Discrepancia
+                  <span data-bs-toggle="tooltip" title="Diferencia: OpenRouter - Nativo del proveedor">
+                    OR vs Nativo
                   </span>
                 </th>
                 <th class="text-end">Output</th>
@@ -617,15 +617,16 @@
                 <td><span class="badge bg-secondary">{{ r.lang.toUpperCase() }}</span></td>
                 <td class="text-end">{{ r.input }}</td>
                 <td class="text-end">
-                  <span v-if="r.local_input !== null && r.local_input !== undefined" class="text-success fw-bold"
-                    :data-bs-toggle="'tooltip'" :title="'Método: ' + (r.local_method || 'N/A')">
-                    {{ r.local_input }}
+                  <span v-if="r.native_input !== null && r.native_input !== undefined" class="fw-bold"
+                    :class="getNativeDiffClass(r)" :data-bs-toggle="'tooltip'"
+                    :title="'Output nativo: ' + (r.native_output ?? 'N/A')">
+                    {{ r.native_input }}
                   </span>
                   <span v-else class="text-muted">-</span>
                 </td>
                 <td class="text-end">
-                  <span v-if="r.token_diff !== null && r.token_diff !== undefined" :class="getDiscrepancyClass(r)">
-                    {{ formatDiscrepancy(r) }}
+                  <span v-if="r.native_input !== null && r.native_input !== undefined" :class="getNativeDiffClass(r)">
+                    {{ formatNativeDiff(r) }}
                   </span>
                   <span v-else class="text-muted">-</span>
                 </td>
@@ -864,21 +865,23 @@
           return 'diff-neutral';
         }
 
-        // Funciones para tokenización local
-        function formatDiscrepancy(r) {
-          if (r.token_diff === null || r.token_diff === undefined) return '-';
-          const sign = r.token_diff > 0 ? '+' : '';
-          const percent = r.token_diff_pct !== null ? ` (${sign}${r.token_diff_pct.toFixed(1)}%)` : '';
-          return `${sign}${r.token_diff}${percent}`;
+        // Funciones para tokens nativos del proveedor
+        function formatNativeDiff(r) {
+          if (r.native_input === null || r.native_input === undefined) return '-';
+          const diff = r.input - r.native_input;
+          const pct = r.native_input > 0 ? ((diff / r.native_input) * 100) : 0;
+          const sign = diff > 0 ? '+' : '';
+          return `${sign}${diff} (${sign}${pct.toFixed(1)}%)`;
         }
 
-        function getDiscrepancyClass(r) {
-          if (r.token_diff === null || r.token_diff === undefined) return '';
-          const absPct = Math.abs(r.token_diff_pct || 0);
+        function getNativeDiffClass(r) {
+          if (r.native_input === null || r.native_input === undefined) return '';
+          const diff = r.input - r.native_input;
+          const pct = r.native_input > 0 ? Math.abs((diff / r.native_input) * 100) : 0;
 
-          if (absPct < 5) return 'text-success fw-bold'; // ✅ < 5%
-          if (absPct < 10) return 'text-info fw-bold';   // 🟢 5-10%
-          if (absPct < 20) return 'text-warning fw-bold'; // 🟡 10-20%
+          if (pct < 5) return 'text-success fw-bold';    // ✅ < 5%
+          if (pct < 10) return 'text-info fw-bold';      // 🟢 5-10%
+          if (pct < 20) return 'text-warning fw-bold';   // 🟡 10-20%
           return 'text-danger fw-bold';                   // 🔴 > 20%
         }
 
@@ -1076,7 +1079,9 @@
                 lang: data.lang,
                 input: data.input,
                 output: data.output,
-                total: data.total
+                total: data.total,
+                native_input: data.native_input ?? null,
+                native_output: data.native_output ?? null
               });
             } else if (data.type === 'error') {
               completedTests.value = data.progress;
@@ -1676,8 +1681,8 @@
           getInputDiffClass,
           getTotalDiff,
           getTotalDiffClass,
-          formatDiscrepancy,
-          getDiscrepancyClass,
+          formatNativeDiff,
+          getNativeDiffClass,
           getRecommendedLang,
           recommendations,
           formatDate,

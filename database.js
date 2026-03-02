@@ -41,12 +41,12 @@ try { db.exec(`ALTER TABLE runs ADD COLUMN temperature REAL DEFAULT 0.1;`); } ca
 try { db.exec(`ALTER TABLE results ADD COLUMN prompt_text TEXT;`); } catch (err) { }
 try { db.exec(`ALTER TABLE results ADD COLUMN response_text TEXT;`); } catch (err) { }
 
-// Columnas para tokenización local (fuente de verdad independiente)
-try { db.exec(`ALTER TABLE results ADD COLUMN local_input INTEGER;`); } catch (err) { }
-try { db.exec(`ALTER TABLE results ADD COLUMN local_method TEXT;`); } catch (err) { }
-try { db.exec(`ALTER TABLE results ADD COLUMN local_confidence TEXT;`); } catch (err) { }
-try { db.exec(`ALTER TABLE results ADD COLUMN token_diff INTEGER;`); } catch (err) { }
-try { db.exec(`ALTER TABLE results ADD COLUMN token_diff_pct REAL;`); } catch (err) { }
+// Columnas para tokens nativos del proveedor (vía /api/v1/generation)
+try { db.exec(`ALTER TABLE results ADD COLUMN native_input INTEGER;`); } catch (err) { }
+try { db.exec(`ALTER TABLE results ADD COLUMN native_output INTEGER;`); } catch (err) { }
+try { db.exec(`ALTER TABLE results ADD COLUMN native_reasoning INTEGER;`); } catch (err) { }
+try { db.exec(`ALTER TABLE results ADD COLUMN native_cached INTEGER;`); } catch (err) { }
+try { db.exec(`ALTER TABLE results ADD COLUMN generation_id TEXT;`); } catch (err) { }
 
 
 function createRun(source, modelCount, maxTokens = 300, temperature = 0.1) {
@@ -72,7 +72,7 @@ function saveResult(runId, data) {
     INSERT INTO results (
       run_id, model, lang, input, output, total, error, 
       prompt_text, response_text, 
-      local_input, local_method, local_confidence, token_diff, token_diff_pct,
+      native_input, native_output, native_reasoning, native_cached, generation_id,
       created_at
     )
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
@@ -87,11 +87,11 @@ function saveResult(runId, data) {
     data.error || null,
     data.prompt_text || null,
     data.response_text || null,
-    data.local_input || null,
-    data.local_method || null,
-    data.local_confidence || null,
-    data.token_diff || null,
-    data.token_diff_pct || null
+    data.native_input ?? null,
+    data.native_output ?? null,
+    data.native_reasoning ?? null,
+    data.native_cached ?? null,
+    data.generation_id || null
   );
 }
 

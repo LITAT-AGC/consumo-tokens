@@ -62,31 +62,31 @@ function verifyStructure() {
   const expectedResultsColumns = [
     'id', 'run_id', 'model', 'lang', 'input', 'output', 'total',
     'prompt_text', 'response_text', 'error', 'created_at',
-    'local_input', 'local_method', 'local_confidence', 'token_diff', 'token_diff_pct'
+    'native_input', 'native_output', 'native_reasoning', 'native_cached', 'generation_id'
   ];
   const missingResultsColumns = expectedResultsColumns.filter(col => !resultsInfo.find(c => c.name === col));
 
   if (missingResultsColumns.length > 0) {
     console.log(`   ⚠️  Faltan columnas: ${missingResultsColumns.join(', ')}`);
   } else {
-    console.log('   ✅ Todas las columnas esperadas presentes (incluidas las nuevas de tokenización local)');
+    console.log('   ✅ Todas las columnas esperadas presentes (tokens nativos)');
   }
 
   // Contar registros
   const runCount = db.prepare('SELECT COUNT(*) as count FROM runs').get().count;
   const resultCount = db.prepare('SELECT COUNT(*) as count FROM results').get().count;
-  const localTokenCount = db.prepare('SELECT COUNT(*) as count FROM results WHERE local_input IS NOT NULL').get().count;
+  const nativeTokenCount = db.prepare('SELECT COUNT(*) as count FROM results WHERE native_input IS NOT NULL').get().count;
 
   console.log('\n📈 Estadísticas:');
   console.log(`   Runs totales: ${runCount}`);
   console.log(`   Resultados totales: ${resultCount}`);
-  console.log(`   Resultados con tokenización local: ${localTokenCount}`);
+  console.log(`   Resultados con tokens nativos: ${nativeTokenCount}`);
 
-  if (localTokenCount > 0) {
-    console.log(`   ✅ ${((localTokenCount / resultCount) * 100).toFixed(1)}% de resultados tienen datos locales`);
+  if (nativeTokenCount > 0) {
+    console.log(`   ✅ ${((nativeTokenCount / resultCount) * 100).toFixed(1)}% de resultados tienen tokens nativos del proveedor`);
   } else if (resultCount > 0) {
-    console.log('   ℹ️  Los resultados existentes no tienen datos de tokenización local');
-    console.log('   → Ejecuta un nuevo benchmark para obtener comparaciones locales');
+    console.log('   ℹ️  Los resultados existentes no tienen tokens nativos');
+    console.log('   → Ejecuta un nuevo benchmark para obtener datos vía /api/v1/generation');
   }
 
   db.close();
@@ -104,11 +104,11 @@ function addMissingColumns() {
     { table: 'runs', column: 'temperature', type: 'REAL DEFAULT 0.1' },
     { table: 'results', column: 'prompt_text', type: 'TEXT' },
     { table: 'results', column: 'response_text', type: 'TEXT' },
-    { table: 'results', column: 'local_input', type: 'INTEGER' },
-    { table: 'results', column: 'local_method', type: 'TEXT' },
-    { table: 'results', column: 'local_confidence', type: 'TEXT' },
-    { table: 'results', column: 'token_diff', type: 'INTEGER' },
-    { table: 'results', column: 'token_diff_pct', type: 'REAL' }
+    { table: 'results', column: 'native_input', type: 'INTEGER' },
+    { table: 'results', column: 'native_output', type: 'INTEGER' },
+    { table: 'results', column: 'native_reasoning', type: 'INTEGER' },
+    { table: 'results', column: 'native_cached', type: 'INTEGER' },
+    { table: 'results', column: 'generation_id', type: 'TEXT' }
   ];
 
   for (const { table, column, type } of columnsToAdd) {

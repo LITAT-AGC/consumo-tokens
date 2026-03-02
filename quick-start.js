@@ -60,27 +60,8 @@ if (!fs.existsSync('node_modules')) {
   console.log('✅ node_modules existe');
 }
 
-// 3. Instalar tokenizadores (opcionales pero recomendados)
-console.log('\n3️⃣  TOKENIZADORES LOCALES (Recomendado)');
-console.log('   Estos proporcionan la "fuente de verdad" independiente de OpenRouter\n');
-
-const hasTokenizers = fs.existsSync('node_modules/tiktoken') &&
-  fs.existsSync('node_modules/@anthropic-ai');
-
-if (!hasTokenizers) {
-  console.log('⚠️  Tokenizadores no instalados');
-  console.log('\n¿Deseas instalar los tokenizadores locales? (Recomendado)');
-  console.log('  - tiktoken (OpenAI/GPT)');
-  console.log('  - @anthropic-ai/tokenizer (Claude)');
-  console.log('\nEsto permitirá comparar los datos de OpenRouter con cálculos locales.');
-  console.log('\nPara instalar, ejecuta:');
-  console.log('  npm install tiktoken @anthropic-ai/tokenizer\n');
-} else {
-  console.log('✅ Tokenizadores instalados (tiktoken, anthropic)');
-}
-
-// 4. Verificar/actualizar base de datos
-console.log('\n4️⃣  BASE DE DATOS');
+// 3. Verificar/actualizar base de datos
+console.log('\n3️⃣  BASE DE DATOS');
 if (fs.existsSync('benchmark.db')) {
   console.log('✅ benchmark.db existe');
   console.log('⏳ Verificando estructura...');
@@ -105,9 +86,8 @@ if (fs.existsSync('.env')) {
   console.log('   OPENROUTER_API_KEY=tu_clave_aqui');
 }
 
-// 6. Tests disponibles
-console.log('\n6️⃣  SCRIPTS DE PRUEBA DISPONIBLES');
-console.log('   ✅ node test-local-tokenizers.js - Probar tokenizadores sin gastar créditos');
+// 5. Scripts disponibles
+console.log('\n5️⃣  SCRIPTS DISPONIBLES');
 console.log('   ✅ node analyze-results.js - Analizar resultados guardados');
 console.log('   ✅ node reset-database.js - Verificar/actualizar estructura de BD');
 console.log('   ✅ npm start - Iniciar servidor y ejecutar benchmarks');
@@ -122,28 +102,13 @@ console.log('🎯 Estado: Listo para usar\n');
 
 console.log('🚀 PRÓXIMOS PASOS:\n');
 
-if (!hasTokenizers) {
-  console.log('1️⃣  Instalar tokenizadores (RECOMENDADO):');
-  console.log('    npm install tiktoken @anthropic-ai/tokenizer\n');
-  console.log('2️⃣  Probar tokenizadores:');
-  console.log('    node test-local-tokenizers.js\n');
-  console.log('3️⃣  Iniciar servidor:');
-  console.log('    npm start\n');
-  console.log('4️⃣  Abrir navegador:');
-  console.log('    http://localhost:3050\n');
-} else {
-  console.log('1️⃣  Probar tokenizadores:');
-  console.log('    node test-local-tokenizers.js\n');
-  console.log('2️⃣  Iniciar servidor:');
-  console.log('    npm start\n');
-  console.log('3️⃣  Abrir navegador:');
-  console.log('    http://localhost:3050\n');
-}
+console.log('1️⃣  Iniciar servidor:');
+console.log('    npm start\n');
+console.log('2️⃣  Abrir navegador:');
+console.log('    http://localhost:3050\n');
 
 console.log('📚 DOCUMENTACIÓN:');
 console.log('   • README.md - Guía general');
-console.log('   • SOLUTION-SUMMARY.md - Resumen de la solución');
-console.log('   • LOCAL-TOKENIZERS-GUIDE.md - Guía de tokenización local');
-console.log('   • ANOMALIA-TOKENS.md - Análisis de anomalías detectadas\n');
+console.log('   • docs/ - Documentación completa\n');
 
 console.log('═══════════════════════════════════════════════════\n');

@@ -31,16 +31,6 @@ Abre http://localhost:3050 en tu navegador. Desde la interfaz puedes:
 3. Ver resultados en tabla con datos de tokens por idioma
 4. Consultar historial de ejecuciones
 
-### Tokenización local (recomendado)
-
-Para obtener conteos de tokens independientes de OpenRouter:
-
-```bash
-npm install tiktoken @anthropic-ai/tokenizer
-```
-
-Esto permite comparar los tokens reportados por OpenRouter con los calculados localmente. Ver [docs/tokenizacion-local.md](docs/tokenizacion-local.md).
-
 ### Analizar resultados
 
 ```bash
@@ -55,7 +45,6 @@ Ver [docs/analisis-resultados.md](docs/analisis-resultados.md) para interpretar 
 |---------|-------------|
 | `npm start` | Iniciar servidor web (puerto 3050) |
 | `node analyze-results.js` | Analizar datos almacenados |
-| `node test-local-tokenizers.js` | Probar tokenizadores sin gastar créditos |
 | `node quick-start.js` | Verificar estado del proyecto |
 | `node reset-database.js` | Verificar/reparar base de datos |
 
@@ -65,7 +54,6 @@ Ver [docs/analisis-resultados.md](docs/analisis-resultados.md) para interpretar 
 ├─ index.js                  # Servidor Express + WebSocket
 ├─ benchmark-runner.js       # Ejecutor de benchmarks
 ├─ database.js               # Gestión SQLite
-├─ local-tokenizers.js       # Tokenización local
 ├─ analyze-results.js        # Análisis de resultados
 ├─ public/index.html         # Interfaz web
 ├─ prompts/                  # Prompts por idioma (EN, ES, ZH)
@@ -75,7 +63,6 @@ Ver [docs/analisis-resultados.md](docs/analisis-resultados.md) para interpretar 
 ## Documentación
 
 - [Configuración](docs/configuracion.md) - Variables de entorno
-- [Tokenización local](docs/tokenizacion-local.md) - Instalación y uso de tokenizadores
 - [Análisis de resultados](docs/analisis-resultados.md) - Interpretación de datos y anomalías conocidas
 - [Costos por idioma](docs/costos-por-idioma.md) - Comparación de costos EN/ES/ZH
 - [Fundamentos](docs/fundamentos.md) - Filosofía y decisiones del proyecto
