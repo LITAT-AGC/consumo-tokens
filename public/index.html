@@ -868,19 +868,19 @@
           if (results.value.length === 0) return;
 
           const runInfo = selectedRunDetails.value;
-          const title = runInfo ? \`Benchmark Run #\${runInfo.id} - \${formatDate(runInfo.started_at)}\` : 'Token Benchmark Results';
+          const title = runInfo ? `Benchmark Run #${runInfo.id} - ${formatDate(runInfo.started_at)}` : 'Token Benchmark Results';
 
           let rowsHtml = '';
           for (const g of groupedResults.value) {
-            rowsHtml += \`
+            rowsHtml += `
               <tr>
-                <td><strong>\${g.name}</strong></td>
-                <td>\${g.results.en ? g.results.en.total : (g.errors.en ? '<span class="error" title="'+g.errors.en+'">Error</span>' : '-')}</td>
-                <td>\${g.results.es ? g.results.es.total : (g.errors.es ? '<span class="error" title="'+g.errors.es+'">Error</span>' : '-')}</td>
-                <td>\${g.results.zh ? g.results.zh.total : (g.errors.zh ? '<span class="error" title="'+g.errors.zh+'">Error</span>' : '-')}</td>
-                <td><span class="badge">\${(getRecommendedLang(g) || '-').toUpperCase()}</span></td>
+                <td><strong>${g.name}</strong></td>
+                <td>${g.results.en ? g.results.en.total : (g.errors.en ? '<span class="error" title="'+g.errors.en+'">Error</span>' : '-')}</td>
+                <td>${g.results.es ? g.results.es.total : (g.errors.es ? '<span class="error" title="'+g.errors.es+'">Error</span>' : '-')}</td>
+                <td>${g.results.zh ? g.results.zh.total : (g.errors.zh ? '<span class="error" title="'+g.errors.zh+'">Error</span>' : '-')}</td>
+                <td><span class="badge">${(getRecommendedLang(g) || '-').toUpperCase()}</span></td>
               </tr>
-            \`;
+            `;
           }
 
           const promptsByLang = {};
@@ -892,20 +892,20 @@
 
           let promptsHtml = '';
           for (const [lang, text] of Object.entries(promptsByLang).sort()) {
-            promptsHtml += \`
+            promptsHtml += `
               <div class="prompt-box">
-                <h4>Prompt: \${lang.toUpperCase()}</h4>
-                <pre>\${text}</pre>
+                <h4>Prompt: ${lang.toUpperCase()}</h4>
+                <pre>${text}</pre>
               </div>
-            \`;
+            `;
           }
 
-          const htmlContent = \`<!DOCTYPE html>
+          const htmlContent = `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>\${title}</title>
+  <title>${title}</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -1044,12 +1044,12 @@
 <body>
   <div class="wrapper">
     <div class="header">
-      <h1>\${runInfo ? \`Run #\${runInfo.id}\` : 'Benchmark Results'}</h1>
+      <h1>${runInfo ? `Run #${runInfo.id}` : 'Benchmark Results'}</h1>
       <div class="meta-data">
-        <span><strong>Fecha:</strong> \${runInfo ? formatDate(runInfo.started_at) : '-'}</span>
-        <span><strong>Modelos:</strong> \${runInfo ? runInfo.model_count : '-'}</span>
-        <span><strong>Max Tokens:</strong> \${runInfo?.max_tokens || 300}</span>
-        <span><strong>Temperatura:</strong> \${runInfo?.temperature || 0.1}</span>
+        <span><strong>Fecha:</strong> ${runInfo ? formatDate(runInfo.started_at) : '-'}</span>
+        <span><strong>Modelos:</strong> ${runInfo ? runInfo.model_count : '-'}</span>
+        <span><strong>Max Tokens:</strong> ${runInfo?.max_tokens || 300}</span>
+        <span><strong>Temperatura:</strong> ${runInfo?.temperature || 0.1}</span>
       </div>
     </div>
 
@@ -1066,28 +1066,28 @@
           </tr>
         </thead>
         <tbody>
-          \${rowsHtml}
+          ${rowsHtml}
         </tbody>
       </table>
     </div>
 
     <div class="card">
       <h2>Parámetros y Prompts Utilizados</h2>
-      \${promptsHtml || '<p style="color: #6b7280; font-style: italic;">No se registraron los textos de los prompts en esta ejecución.</p>'}
+      ${promptsHtml || '<p style="color: #6b7280; font-style: italic;">No se registraron los textos de los prompts en esta ejecución.</p>'}
     </div>
     
     <div class="footer">
-      Generado por Token Benchmark • \${new Date().toLocaleString('es-ES')}
+      Generado por Token Benchmark • ${new Date().toLocaleString('es-ES')}
     </div>
   </div>
 </body>
-</html>\`;
+</html>`;
 
           const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
           const url = URL.createObjectURL(blob);
           const link = document.createElement('a');
           link.href = url;
-          link.download = \`benchmark_run_\${runInfo ? runInfo.id : 'export'}.html\`;
+          link.download = `benchmark_run_${runInfo ? runInfo.id : 'export'}.html`;
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
