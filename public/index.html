@@ -632,8 +632,8 @@
                 </td>
                 <td class="text-end">{{ r.output }}</td>
                 <td class="text-end"><strong>{{ r.total }}</strong></td>
-                <td class="text-end" :class="getInputDiffClass(r)">
-                  {{ getInputDiff(r) }}
+                <td class="text-end" :class="getTotalDiffClass(r)">
+                  {{ getTotalDiff(r) }}
                 </td>
               </tr>
             </tbody>
@@ -995,8 +995,8 @@
             const res = await fetch(url);
             const data = await res.json();
             results.value = data.results || [];
-            if (!selectedRunId.value) {
-              runs.value = data.runs || [];
+            if (data.runs) {
+              runs.value = data.runs;
             }
           } catch (e) {
             console.error('Error cargando resultados:', e);

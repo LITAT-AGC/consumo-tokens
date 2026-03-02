@@ -100,9 +100,13 @@ function getAllResults() {
     SELECT * FROM runs ORDER BY started_at DESC LIMIT 20
   `).all();
 
-  const results = db.prepare(`
-    SELECT * FROM results ORDER BY created_at ASC
-  `).all();
+  // Only return results from the most recent run to avoid mixing data from multiple runs
+  const latestRunId = runs.length ? runs[0].id : null;
+  const results = latestRunId
+    ? db.prepare(`
+        SELECT * FROM results WHERE run_id = ? ORDER BY created_at ASC
+      `).all(latestRunId)
+    : [];
 
   return { runs, results };
 }
