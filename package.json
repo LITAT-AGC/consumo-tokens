@@ -12,12 +12,14 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@anthropic-ai/tokenizer": "^0.0.4",
     "better-sqlite3": "^12.6.2",
     "cli-table3": "^0.6.5",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "node-fetch": "^3.3.2",
+    "tiktoken": "^1.0.22",
     "ws": "^8.19.0"
   }
 }

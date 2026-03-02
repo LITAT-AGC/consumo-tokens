@@ -9,6 +9,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
   <style>
     body {
       background-color: #f8f9fa;
@@ -400,6 +401,11 @@
                 {{ formatDate(run.started_at) }} - {{ run.model_count }} modelos
               </option>
             </select>
+            <button type="button" v-if="selectedRunId"
+              class="btn btn-sm btn-outline-danger d-flex align-items-center gap-1" @click.prevent="deleteRun()"
+              title="Eliminar este benchmark">
+              <i class="bi bi-trash"></i>
+            </button>
             <button class="btn btn-sm btn-primary d-flex align-items-center gap-1" @click="exportToHTML"
               :disabled="results.length === 0">
               <i class="bi bi-filetype-html"></i> Exportar
@@ -589,11 +595,20 @@
               <tr>
                 <th>Modelo</th>
                 <th>Idioma</th>
-                <th class="text-end">Input</th>
+                <th class="text-end">Input (OR)</th>
+                <th class="text-end">
+                  <span data-bs-toggle="tooltip" title="Tokens calculados localmente (fuente de verdad)">
+                    Local 🔍
+                  </span>
+                </th>
+                <th class="text-end">
+                  <span data-bs-toggle="tooltip" title="Diferencia: OpenRouter - Local">
+                    Discrepancia
+                  </span>
+                </th>
                 <th class="text-end">Output</th>
                 <th class="text-end">Total</th>
-                <th class="text-end">Diff Input vs EN</th>
-                <th class="text-end">Diff Total vs EN</th>
+                <th class="text-end">Diff vs EN</th>
               </tr>
             </thead>
             <tbody>
@@ -601,17 +616,51 @@
                 <td>{{ r.model }}</td>
                 <td><span class="badge bg-secondary">{{ r.lang.toUpperCase() }}</span></td>
                 <td class="text-end">{{ r.input }}</td>
+                <td class="text-end">
+                  <span v-if="r.local_input !== null && r.local_input !== undefined" class="text-success fw-bold"
+                    :data-bs-toggle="'tooltip'" :title="'Método: ' + (r.local_method || 'N/A')">
+                    {{ r.local_input }}
+                  </span>
+                  <span v-else class="text-muted">-</span>
+                </td>
+                <td class="text-end">
+                  <span v-if="r.token_diff !== null && r.token_diff !== undefined" :class="getDiscrepancyClass(r)">
+                    {{ formatDiscrepancy(r) }}
+                  </span>
+                  <span v-else class="text-muted">-</span>
+                </td>
                 <td class="text-end">{{ r.output }}</td>
                 <td class="text-end"><strong>{{ r.total }}</strong></td>
                 <td class="text-end" :class="getInputDiffClass(r)">
                   {{ getInputDiff(r) }}
                 </td>
-                <td class="text-end" :class="getTotalDiffClass(r)">
-                  {{ getTotalDiff(r) }}
-                </td>
               </tr>
             </tbody>
           </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal de confirmación -->
+    <div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header" :class="confirmModal.headerClass">
+            <h5 class="modal-title">
+              <i :class="confirmModal.icon" class="me-2"></i>{{ confirmModal.title }}
+            </h5>
+            <button type="button" class="btn-close" :class="confirmModal.btnCloseClass" data-bs-dismiss="modal"
+              aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body">
+            <p class="mb-0">{{ confirmModal.message }}</p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" :class="confirmModal.confirmBtnClass" @click="confirmModal.onConfirm()">
+              <i :class="confirmModal.confirmIcon" class="me-1"></i>{{ confirmModal.confirmLabel }}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -639,6 +688,43 @@
         const selectedRunId = ref(null);
         const selectedModelName = ref(null);
         const ws = ref(null);
+
+        // --- Modal de confirmación ---
+        const confirmModal = ref({
+          title: '',
+          message: '',
+          icon: 'bi bi-question-circle',
+          headerClass: '',
+          btnCloseClass: '',
+          confirmBtnClass: 'btn btn-primary',
+          confirmIcon: 'bi bi-check-lg',
+          confirmLabel: 'Confirmar',
+          onConfirm: () => { }
+        });
+        let _bsModal = null;
+
+        function showConfirm({ title, message, icon, variant, confirmLabel, confirmIcon, onConfirm }) {
+          const isDanger = variant === 'danger';
+          confirmModal.value = {
+            title: title || 'Confirmar acción',
+            message: message || '¿Deseas continuar?',
+            icon: icon || (isDanger ? 'bi bi-exclamation-triangle-fill' : 'bi bi-question-circle'),
+            headerClass: isDanger ? 'bg-danger text-white' : '',
+            btnCloseClass: isDanger ? 'btn-close-white' : '',
+            confirmBtnClass: isDanger ? 'btn btn-danger' : 'btn btn-primary',
+            confirmIcon: confirmIcon || (isDanger ? 'bi bi-trash' : 'bi bi-check-lg'),
+            confirmLabel: confirmLabel || 'Confirmar',
+            onConfirm: () => {
+              _bsModal.hide();
+              onConfirm();
+            }
+          };
+          if (!_bsModal) {
+            _bsModal = new bootstrap.Modal(document.getElementById('confirmModal'));
+          }
+          _bsModal.show();
+        }
+        // --- Fin modal de confirmación ---
 
         // Chart canvas refs
         const chartGroupedEl = ref(null);
@@ -778,6 +864,24 @@
           return 'diff-neutral';
         }
 
+        // Funciones para tokenización local
+        function formatDiscrepancy(r) {
+          if (r.token_diff === null || r.token_diff === undefined) return '-';
+          const sign = r.token_diff > 0 ? '+' : '';
+          const percent = r.token_diff_pct !== null ? ` (${sign}${r.token_diff_pct.toFixed(1)}%)` : '';
+          return `${sign}${r.token_diff}${percent}`;
+        }
+
+        function getDiscrepancyClass(r) {
+          if (r.token_diff === null || r.token_diff === undefined) return '';
+          const absPct = Math.abs(r.token_diff_pct || 0);
+
+          if (absPct < 5) return 'text-success fw-bold'; // ✅ < 5%
+          if (absPct < 10) return 'text-info fw-bold';   // 🟢 5-10%
+          if (absPct < 20) return 'text-warning fw-bold'; // 🟡 10-20%
+          return 'text-danger fw-bold';                   // 🔴 > 20%
+        }
+
         function getRecommendedLang(modelGroup) {
           const results = modelGroup.results;
           const langs = Object.keys(results).filter(lang => results[lang] && results[lang].total > 0);
@@ -913,32 +1017,44 @@
           selectedModels.value = [];
         }
 
-        async function startBenchmark() {
+        function startBenchmark() {
           if (selectedModels.value.length === 0) return;
-
-          try {
-            const res = await fetch('/api/benchmark/start', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                modelIds: selectedModels.value,
-                source: source.value
-              })
-            });
-            const data = await res.json();
-            if (data.success) {
-              isRunning.value = true;
-              currentStatus.value = 'Iniciando benchmark...';
-              completedTests.value = 0;
-              totalTests.value = 0;
-              results.value = [];
-            } else {
-              console.error('Error del servidor:', data.error);
-              alert('Error: ' + (data.error || 'No se pudo iniciar el benchmark'));
+          const n = selectedModels.value.length;
+          const costMsg = (source.value === 'paid' && estimatedCost.value > 0)
+            ? ` El costo estimado es $${estimatedCost.value.toFixed(6)}.`
+            : '';
+          showConfirm({
+            title: 'Iniciar Benchmark',
+            message: `¿Iniciar el benchmark con ${n} modelo${n > 1 ? 's' : ''} seleccionado${n > 1 ? 's' : ''}?${costMsg}`,
+            icon: 'bi bi-play-fill',
+            confirmLabel: 'Iniciar',
+            confirmIcon: 'bi bi-play-fill',
+            onConfirm: async () => {
+              try {
+                const res = await fetch('/api/benchmark/start', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    modelIds: selectedModels.value,
+                    source: source.value
+                  })
+                });
+                const data = await res.json();
+                if (data.success) {
+                  isRunning.value = true;
+                  currentStatus.value = 'Iniciando benchmark...';
+                  completedTests.value = 0;
+                  totalTests.value = 0;
+                  results.value = [];
+                } else {
+                  console.error('Error del servidor:', data.error);
+                  alert('Error: ' + (data.error || 'No se pudo iniciar el benchmark'));
+                }
+              } catch (e) {
+                console.error('Error iniciando benchmark:', e);
+              }
             }
-          } catch (e) {
-            console.error('Error iniciando benchmark:', e);
-          }
+          });
         }
 
         function connectWebSocket() {
@@ -982,6 +1098,33 @@
           ws.value.onclose = () => {
             setTimeout(connectWebSocket, 3000);
           };
+        }
+
+        function deleteRun() {
+          if (!selectedRunId.value) return;
+          const runInfo = selectedRunDetails.value;
+          const dateStr = runInfo ? formatDate(runInfo.started_at) : `#${selectedRunId.value}`;
+          showConfirm({
+            title: 'Eliminar Benchmark',
+            message: `¿Eliminar el benchmark del ${dateStr}? Esta acción no se puede deshacer.`,
+            variant: 'danger',
+            confirmLabel: 'Eliminar',
+            onConfirm: async () => {
+              try {
+                const res = await fetch(`/api/runs/${selectedRunId.value}`, { method: 'DELETE' });
+                const data = await res.json();
+                if (data.success) {
+                  selectedRunId.value = null;
+                  loadResults();
+                } else {
+                  alert('Error al eliminar: ' + (data.error || 'Desconocido'));
+                }
+              } catch (e) {
+                console.error('Error eliminando benchmark:', e);
+                alert('Error al eliminar el benchmark');
+              }
+            }
+          });
         }
 
         function exportToHTML() {
@@ -1533,6 +1676,8 @@
           getInputDiffClass,
           getTotalDiff,
           getTotalDiffClass,
+          formatDiscrepancy,
+          getDiscrepancyClass,
           getRecommendedLang,
           recommendations,
           formatDate,
@@ -1545,6 +1690,8 @@
           selectAll,
           deselectAll,
           startBenchmark,
+          confirmModal,
+          deleteRun,
           exportToHTML,
           chartGroupedEl,
           chartRankEl,

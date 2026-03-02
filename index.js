@@ -4,7 +4,7 @@ const cors = require('cors');
 const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
-const { getAllResults, getResultsByRun } = require('./database');
+const { getAllResults, getResultsByRun, deleteRun } = require('./database');
 const { BenchmarkRunner, fetchModelsCatalog, getAvailableFreeModels, getAllPaidModels, selectPaidModelsFromWhitelist } = require('./benchmark-runner');
 const fs = require('fs/promises');
 
@@ -100,6 +100,17 @@ app.get('/api/results/:runId', (req, res) => {
   try {
     const data = getResultsByRun(parseInt(req.params.runId));
     res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// API: Eliminar un run específico
+app.delete('/api/runs/:runId', (req, res) => {
+  try {
+    const runId = parseInt(req.params.runId);
+    deleteRun(runId);
+    res.json({ success: true, message: `Run ${runId} deleted successfully` });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

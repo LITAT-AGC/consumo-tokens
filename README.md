@@ -1,25 +1,6 @@
 # consumo-tokens
 
-Script en Node.js para medir y comparar consumo de tokens por idioma (EN, ES, ZH) usando:
-
-- modelos gratuitos disponibles (`:free`), o
-- una whitelist de modelos pagos definida en `.env`.
-
-Ofrece una **interfaz web** para ejecutar benchmarks visualmente y consultar la lista de modelos.
-
-## Interfaz Web
-
-```bash
-npm start
-```
-
-Luego abre http://localhost:3050 en tu navegador.
-
-La interfaz permite:
-- Seleccionar modelos para las pruebas
-- Ver resultados en tabla HTML
-- Seguimiento en tiempo real via WebSocket
-- Guardar resultados en SQLite
+Herramienta en Node.js para medir y comparar el consumo de tokens por idioma (EN, ES, ZH) en distintos LLMs a través de OpenRouter. Incluye una interfaz web para ejecutar benchmarks y analizar resultados.
 
 ## Instalación
 
@@ -33,79 +14,69 @@ Crea un archivo `.env` en la raíz:
 
 ```env
 OPENROUTER_API_KEY=tu_api_key_aqui
-
-# Opcional: lista de IDs :free separados por coma
-PREFERRED_FREE_MODELS=
-
-# Opcional: fuente de modelos por defecto (free | paid)
-MODEL_SOURCE=free
-
-# Opcional: whitelist de modelos pagos (IDs sin :free)
-PAID_MODELS_WHITELIST=
-
-# Opcional: lista de IDs :free a excluir manualmente
-BLACKLIST_FREE_MODELS=
-
-# Opcional: límite de modelos a evaluar (0 = sin límite)
-MAX_MODELS=0
-
-# Opcional: delay entre invocaciones (ms, default 5000)
-INVOCATION_DELAY_MS=5000
-
-# Opcional: timeout por solicitud a OpenRouter en milisegundos
-REQUEST_TIMEOUT_MS=60000
-
-# Opcional: auto-blacklist tras N errores 402 por modelo (0 desactiva)
-AUTO_BLACKLIST_402_AFTER=2
-
-# Opcional: proveedores/familias objetivo separados por coma
-TARGET_PROVIDER_TAGS=openai,anthropic,gemini,deepseek,qwen,minimax
 ```
 
-### Variables de entorno
-
-- `OPENROUTER_API_KEY` (obligatoria): clave de API de OpenRouter.
-- `PREFERRED_FREE_MODELS` (opcional): IDs exactos de modelos `:free` separados por coma.
-  - Si se define, solo se evalúan esos modelos (si existen en ese momento).
-- `MODEL_SOURCE` (opcional): fuente por defecto de modelos (`free` o `paid`).
-- `PAID_MODELS_WHITELIST` (opcional): IDs de modelos pagos permitidos para usar cuando la fuente es `paid`.
-- `BLACKLIST_FREE_MODELS` (opcional): IDs exactos de modelos `:free` a excluir del benchmark.
-- `MAX_MODELS` (opcional): limita cuántos modelos evaluar.
-- `INVOCATION_DELAY_MS` (opcional): delay entre invocaciones en milisegundos (por defecto `5000`).
-- `REQUEST_TIMEOUT_MS` (opcional): timeout por request al endpoint de chat.
-- `AUTO_BLACKLIST_402_AFTER` (opcional): cantidad de errores `402` tras la cual un modelo se agrega automáticamente a blacklist.
-- `TARGET_PROVIDER_TAGS` (opcional): filtra por proveedor/familia.
-  - Soporta el caso `gemini` (modelos de Google Gemini).
+Ver [docs/configuracion.md](docs/configuracion.md) para todas las opciones disponibles.
 
 ## Uso
 
-1. Copia `.env.example` a `.env` y añade tu clave de OpenRouter
-2. Ejecuta `npm start`
-3. Navega a `http://localhost:3050`
-4. Selecciona la fuente de modelos (gratuitos o pagos)
-5. Ejecuta las pruebas visualizando el progreso en tiempo real
-
-## Estructura del proyecto
-
-```text
-.
-├─ index.js
-├─ benchmark-runner.js
-├─ database.js
-├─ package.json
-├─ .gitignore
-├─ README.md
-├─ public/
-│  └─ ... (archivos de frontend)
-└─ prompts/
-   ├─ en.md
-   ├─ es.md
-   └─ zh.md
+```bash
+npm start
 ```
 
-## Notas
+Abre http://localhost:3050 en tu navegador. Desde la interfaz puedes:
 
-- Si falta `OPENROUTER_API_KEY`, los scripts fallan con error explícito.
-- La disponibilidad de modelos `:free` cambia con el tiempo según OpenRouter.
-- Los prompts se leen desde la base de datos o desde la carpeta `prompts/`.
-- Todos los resultados y persistencia de pruebas se gestionan exclusivamente en la base de datos SQLite y se exponen mediante la interfaz web.
+1. Seleccionar modelos (gratuitos o pagos)
+2. Ejecutar benchmarks con seguimiento en tiempo real
+3. Ver resultados en tabla con datos de tokens por idioma
+4. Consultar historial de ejecuciones
+
+### Tokenización local (recomendado)
+
+Para obtener conteos de tokens independientes de OpenRouter:
+
+```bash
+npm install tiktoken @anthropic-ai/tokenizer
+```
+
+Esto permite comparar los tokens reportados por OpenRouter con los calculados localmente. Ver [docs/tokenizacion-local.md](docs/tokenizacion-local.md).
+
+### Analizar resultados
+
+```bash
+node analyze-results.js
+```
+
+Ver [docs/analisis-resultados.md](docs/analisis-resultados.md) para interpretar los datos.
+
+## Scripts útiles
+
+| Comando | Descripción |
+|---------|-------------|
+| `npm start` | Iniciar servidor web (puerto 3050) |
+| `node analyze-results.js` | Analizar datos almacenados |
+| `node test-local-tokenizers.js` | Probar tokenizadores sin gastar créditos |
+| `node quick-start.js` | Verificar estado del proyecto |
+| `node reset-database.js` | Verificar/reparar base de datos |
+
+## Estructura
+
+```
+├─ index.js                  # Servidor Express + WebSocket
+├─ benchmark-runner.js       # Ejecutor de benchmarks
+├─ database.js               # Gestión SQLite
+├─ local-tokenizers.js       # Tokenización local
+├─ analyze-results.js        # Análisis de resultados
+├─ public/index.html         # Interfaz web
+├─ prompts/                  # Prompts por idioma (EN, ES, ZH)
+└─ docs/                     # Documentación
+```
+
+## Documentación
+
+- [Configuración](docs/configuracion.md) - Variables de entorno
+- [Tokenización local](docs/tokenizacion-local.md) - Instalación y uso de tokenizadores
+- [Análisis de resultados](docs/analisis-resultados.md) - Interpretación de datos y anomalías conocidas
+- [Costos por idioma](docs/costos-por-idioma.md) - Comparación de costos EN/ES/ZH
+- [Fundamentos](docs/fundamentos.md) - Filosofía y decisiones del proyecto
+- [Modelos pagos](docs/modelos-pagos.md) - Listado de modelos con precios

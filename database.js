@@ -27,6 +27,7 @@ db.exec(`
     output INTEGER DEFAULT 0,
     total INTEGER DEFAULT 0,
     prompt_text TEXT,
+    response_text TEXT,
     error TEXT,
     created_at TEXT NOT NULL,
     FOREIGN KEY (run_id) REFERENCES runs(id)
@@ -35,9 +36,17 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_results_run_id ON results(run_id);
 `);
 
-try { db.exec(`ALTER TABLE runs ADD COLUMN max_tokens INTEGER DEFAULT 300;`); } catch (err) {}
-try { db.exec(`ALTER TABLE runs ADD COLUMN temperature REAL DEFAULT 0.1;`); } catch (err) {}
-try { db.exec(`ALTER TABLE results ADD COLUMN prompt_text TEXT;`); } catch (err) {}
+try { db.exec(`ALTER TABLE runs ADD COLUMN max_tokens INTEGER DEFAULT 300;`); } catch (err) { }
+try { db.exec(`ALTER TABLE runs ADD COLUMN temperature REAL DEFAULT 0.1;`); } catch (err) { }
+try { db.exec(`ALTER TABLE results ADD COLUMN prompt_text TEXT;`); } catch (err) { }
+try { db.exec(`ALTER TABLE results ADD COLUMN response_text TEXT;`); } catch (err) { }
+
+// Columnas para tokenización local (fuente de verdad independiente)
+try { db.exec(`ALTER TABLE results ADD COLUMN local_input INTEGER;`); } catch (err) { }
+try { db.exec(`ALTER TABLE results ADD COLUMN local_method TEXT;`); } catch (err) { }
+try { db.exec(`ALTER TABLE results ADD COLUMN local_confidence TEXT;`); } catch (err) { }
+try { db.exec(`ALTER TABLE results ADD COLUMN token_diff INTEGER;`); } catch (err) { }
+try { db.exec(`ALTER TABLE results ADD COLUMN token_diff_pct REAL;`); } catch (err) { }
 
 
 function createRun(source, modelCount, maxTokens = 300, temperature = 0.1) {
@@ -60,10 +69,30 @@ function finishRun(runId, status) {
 
 function saveResult(runId, data) {
   const stmt = db.prepare(`
-    INSERT INTO results (run_id, model, lang, input, output, total, error, prompt_text, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    INSERT INTO results (
+      run_id, model, lang, input, output, total, error, 
+      prompt_text, response_text, 
+      local_input, local_method, local_confidence, token_diff, token_diff_pct,
+      created_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
   `);
-  return stmt.run(runId, data.model, data.lang, data.input || 0, data.output || 0, data.total || 0, data.error || null, data.prompt_text || null);
+  return stmt.run(
+    runId,
+    data.model,
+    data.lang,
+    data.input || 0,
+    data.output || 0,
+    data.total || 0,
+    data.error || null,
+    data.prompt_text || null,
+    data.response_text || null,
+    data.local_input || null,
+    data.local_method || null,
+    data.local_confidence || null,
+    data.token_diff || null,
+    data.token_diff_pct || null
+  );
 }
 
 function getAllResults() {
@@ -99,6 +128,11 @@ function clearOldRuns() {
   `).run();
 }
 
+function deleteRun(runId) {
+  db.prepare('DELETE FROM results WHERE run_id = ?').run(runId);
+  db.prepare('DELETE FROM runs WHERE id = ?').run(runId);
+}
+
 module.exports = {
   db,
   createRun,
@@ -106,5 +140,6 @@ module.exports = {
   saveResult,
   getAllResults,
   getResultsByRun,
-  clearOldRuns
+  clearOldRuns,
+  deleteRun
 };
