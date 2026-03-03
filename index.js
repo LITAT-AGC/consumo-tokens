@@ -119,7 +119,7 @@ app.delete('/api/runs/:runId', (req, res) => {
 // API: Iniciar benchmark
 app.post('/api/benchmark/start', async (req, res) => {
   try {
-    const { modelIds, source = 'free' } = req.body;
+    const { modelIds, source = 'free', maxTokens = 2000 } = req.body;
 
     if (!modelIds || !Array.isArray(modelIds) || modelIds.length === 0) {
       return res.status(400).json({ error: 'Se requiere un array de modelIds' });
@@ -142,6 +142,7 @@ app.post('/api/benchmark/start', async (req, res) => {
     const runner = new BenchmarkRunner({
       models,
       source,
+      maxTokens,
       wss
     });
 

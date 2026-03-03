@@ -9,8 +9,7 @@ Al ejecutar `npm start` y abrir http://localhost:3050, la tabla de resultados mu
 | **Modelo** | Nombre del modelo evaluado |
 | **Idioma** | EN, ES o ZH |
 | **Input (OR)** | Tokens de entrada reportados por OpenRouter |
-| **Nativo** | Tokens nativos del proveedor (vía /generation endpoint) |
-| **OR vs Nativo** | Diferencia entre OpenRouter y tokens nativos |
+
 | **Output** | Tokens de salida |
 | **Total** | Tokens totales |
 

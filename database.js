@@ -40,6 +40,7 @@ try { db.exec(`ALTER TABLE runs ADD COLUMN max_tokens INTEGER DEFAULT 300;`); } 
 try { db.exec(`ALTER TABLE runs ADD COLUMN temperature REAL DEFAULT 0.1;`); } catch (err) { }
 try { db.exec(`ALTER TABLE results ADD COLUMN prompt_text TEXT;`); } catch (err) { }
 try { db.exec(`ALTER TABLE results ADD COLUMN response_text TEXT;`); } catch (err) { }
+try { db.exec(`ALTER TABLE runs ADD COLUMN summary TEXT;`); } catch (err) { }
 
 // Columnas para tokens nativos del proveedor (vía /api/v1/generation)
 try { db.exec(`ALTER TABLE results ADD COLUMN native_input INTEGER;`); } catch (err) { }
@@ -137,6 +138,15 @@ function deleteRun(runId) {
   db.prepare('DELETE FROM runs WHERE id = ?').run(runId);
 }
 
+function saveRunSummary(runId, summary) {
+  const stmt = db.prepare(`
+    UPDATE runs 
+    SET summary = ?
+    WHERE id = ?
+  `);
+  stmt.run(summary, runId);
+}
+
 module.exports = {
   db,
   createRun,
@@ -145,5 +155,6 @@ module.exports = {
   getAllResults,
   getResultsByRun,
   clearOldRuns,
-  deleteRun
+  deleteRun,
+  saveRunSummary
 };

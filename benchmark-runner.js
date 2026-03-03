@@ -3,6 +3,7 @@ const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fet
 const fs = require('fs/promises');
 const path = require('path');
 const { createRun, finishRun, saveResult } = require('./database');
+const { generateSummary } = require('./generate-summary');
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const BASE_URL = 'https://openrouter.ai/api/v1';
@@ -26,10 +27,11 @@ function sleep(ms) {
 async function fetchNativeTokens(generationId) {
   if (!generationId) return null;
 
-  // Esperar un poco para que OpenRouter procese la generación
-  await sleep(5000);
+  // Esperar más para dar tiempo a que OpenRouter procese la generación
+  await sleep(10000);
 
-  for (let attempt = 0; attempt < 3; attempt++) {
+  const maxAttempts = 5;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       const response = await fetch(`${BASE_URL}/generation?id=${encodeURIComponent(generationId)}`, {
         headers: {
@@ -41,12 +43,12 @@ async function fetchNativeTokens(generationId) {
 
       if (response.status === 404) {
         // La generación aún no está disponible, reintentar
-        if (attempt < 2) {
-          console.warn(`   ⚠️  /generation 404 (intento ${attempt + 1}), reintentando...`);
-          await sleep(5000);
+        if (attempt < maxAttempts - 1) {
+          console.warn(`   ⚠️  /generation 404 (intento ${attempt + 1}), reintentando en 10s...`);
+          await sleep(10000); // 10s extra entre intentos
           continue;
         }
-        console.warn(`   ⚠️  /generation 404 tras 3 intentos para ${generationId}`);
+        console.warn(`   ⚠️  /generation 404 tras ${maxAttempts} intentos para ${generationId}`);
         console.warn(`   ℹ️  Esto es normal para algunos modelos - continuando sin tokens nativos`);
         return null;
       }
@@ -223,7 +225,11 @@ async function callOpenRouter(modelId, prompt, maxTokens = 300, temperature = 0.
       };
     } catch (error) {
       if (error?.name === 'AbortError') {
-        throw new Error(`Timeout de ${REQUEST_TIMEOUT_MS}ms esperando respuesta del modelo.`);
+        if (attempt < MAX_RETRIES) {
+          console.warn(`   ⚠️  Timeout de ${REQUEST_TIMEOUT_MS}ms (${modelId}), reintento ${attempt + 1}/${MAX_RETRIES}...`);
+          continue;
+        }
+        throw new Error(`Timeout de ${REQUEST_TIMEOUT_MS}ms esperando respuesta del modelo tras ${MAX_RETRIES} reintentos.`);
       }
       throw error;
     } finally {
@@ -236,6 +242,7 @@ class BenchmarkRunner {
   constructor(options) {
     this.models = options.models || [];
     this.source = options.source || 'free';
+    this.maxTokens = options.maxTokens || 2000;
     this.wss = options.wss;
     this.testCases = [];
     this.totalTests = 0;
@@ -250,7 +257,7 @@ class BenchmarkRunner {
 
       this.testCases = await loadTestCasesFromMarkdown();
       this.totalTests = this.models.length * this.testCases.length;
-      const maxTokens = 300;
+      const maxTokens = this.maxTokens;
       const temperature = 0.1;
       this.runId = createRun(this.source, this.models.length, maxTokens, temperature);
 
@@ -370,6 +377,20 @@ class BenchmarkRunner {
         type: 'complete',
         runId: this.runId,
         totalTests: this.totalTests
+      });
+
+      // --- Generar resumen de inteligencia artificial ---
+      generateSummary(this.runId, {
+        models: this.models,
+        tests: this.totalTests,
+        source: this.source,
+        maxTokens: this.maxTokens
+      }).then((summaryText) => {
+        this.broadcast({
+          type: 'summaryReady',
+          runId: this.runId,
+          summary: summaryText
+        });
       });
 
     } catch (error) {
