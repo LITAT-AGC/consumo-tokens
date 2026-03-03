@@ -34,6 +34,24 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_results_run_id ON results(run_id);
+
+  CREATE TABLE IF NOT EXISTS prompt_sets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS prompts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    set_id INTEGER NOT NULL,
+    lang TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (set_id) REFERENCES prompt_sets(id),
+    UNIQUE (set_id, lang)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_prompts_set_id ON prompts(set_id);
 `);
 
 try { db.exec(`ALTER TABLE runs ADD COLUMN max_tokens INTEGER DEFAULT 300;`); } catch (err) { }
@@ -147,6 +165,79 @@ function saveRunSummary(runId, summary) {
   stmt.run(summary, runId);
 }
 
+// --- Prompt Sets API ---
+
+function getPromptSets() {
+  return db.prepare('SELECT * FROM prompt_sets ORDER BY created_at ASC').all();
+}
+
+function getPromptSet(setId) {
+  return db.prepare('SELECT * FROM prompt_sets WHERE id = ?').get(setId);
+}
+
+function createPromptSet(name) {
+  const stmt = db.prepare(`
+    INSERT INTO prompt_sets (name, created_at)
+    VALUES (?, datetime('now'))
+  `);
+  return stmt.run(name).lastInsertRowid;
+}
+
+function updatePromptSet(setId, name) {
+  db.prepare('UPDATE prompt_sets SET name = ? WHERE id = ?').run(name, setId);
+}
+
+function deletePromptSet(setId) {
+  db.prepare('DELETE FROM prompts WHERE set_id = ?').run(setId);
+  db.prepare('DELETE FROM prompt_sets WHERE id = ?').run(setId);
+}
+
+// --- Prompts within Sets API ---
+
+function getPromptsBySet(setId) {
+  return db.prepare('SELECT * FROM prompts WHERE set_id = ?').all(setId);
+}
+
+function updatePrompt(setId, lang, content) {
+  // Use UPSERT (INSERT ... ON CONFLICT)
+  const stmt = db.prepare(`
+    INSERT INTO prompts (set_id, lang, content, created_at)
+    VALUES (?, ?, ?, datetime('now'))
+    ON CONFLICT(set_id, lang) DO UPDATE SET content = excluded.content
+  `);
+  stmt.run(setId, lang, content);
+}
+
+// --- Initial Data Migration ---
+function initDefaultPromptSet() {
+  const existingSets = getPromptSets();
+  if (existingSets.length === 0) {
+    console.log('📦 Inicializando "Default Prompts" desde archivos .md...');
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const promptsDir = path.join(__dirname, 'prompts');
+      const langs = ['en', 'es', 'zh'];
+      
+      const newSetId = createPromptSet('Default Prompts');
+      
+      for (const lang of langs) {
+        const filePath = path.join(promptsDir, `${lang}.md`);
+        if (fs.existsSync(filePath)) {
+          const content = fs.readFileSync(filePath, 'utf8');
+          updatePrompt(newSetId, lang, content);
+        }
+      }
+      console.log('✅ "Default Prompts" inicializado correctamente.');
+    } catch (e) {
+      console.error('❌ Error migrando prompts iniciales:', e.message);
+    }
+  }
+}
+
+// Run the migration on startup
+initDefaultPromptSet();
+
 module.exports = {
   db,
   createRun,
@@ -156,5 +247,12 @@ module.exports = {
   getResultsByRun,
   clearOldRuns,
   deleteRun,
-  saveRunSummary
+  saveRunSummary,
+  getPromptSets,
+  getPromptSet,
+  createPromptSet,
+  updatePromptSet,
+  deletePromptSet,
+  getPromptsBySet,
+  updatePrompt
 };

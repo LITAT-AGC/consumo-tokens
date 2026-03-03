@@ -72,6 +72,24 @@ function verifyStructure() {
     console.log('   ✅ Todas las columnas esperadas presentes (tokens nativos)');
   }
 
+  // Verificar tabla prompt_sets
+  const promptSetsInfo = db.pragma('table_info(prompt_sets)');
+  console.log('\n📋 Tabla PROMPT_SETS:');
+  if (promptSetsInfo.length === 0) {
+    console.log('   ⚠️  Tabla prompt_sets NO existe.');
+  } else {
+    console.log('   Columnas:', promptSetsInfo.map(c => c.name).join(', '));
+  }
+
+  // Verificar tabla prompts
+  const promptsInfo = db.pragma('table_info(prompts)');
+  console.log('\n📋 Tabla PROMPTS:');
+  if (promptsInfo.length === 0) {
+    console.log('   ⚠️  Tabla prompts NO existe.');
+  } else {
+    console.log('   Columnas:', promptsInfo.map(c => c.name).join(', '));
+  }
+
   // Contar registros
   const runCount = db.prepare('SELECT COUNT(*) as count FROM runs').get().count;
   const resultCount = db.prepare('SELECT COUNT(*) as count FROM results').get().count;
@@ -98,6 +116,32 @@ function addMissingColumns() {
   console.log('\n🔧 Agregando columnas faltantes...\n');
 
   const db = new Database(DB_PATH);
+
+  // Intentar crear las nuevas tablas si no existen antes de hacer ALTER sobre las viejas
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS prompt_sets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS prompts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        set_id INTEGER NOT NULL,
+        lang TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (set_id) REFERENCES prompt_sets(id),
+        UNIQUE (set_id, lang)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_prompts_set_id ON prompts(set_id);
+    `);
+    console.log('   ✅ Tablas de prompts recreadas/verificadas.');
+  } catch (error) {
+    console.error('   ❌ Error creando tablas de prompts:', error.message);
+  }
 
   const columnsToAdd = [
     { table: 'runs', column: 'max_tokens', type: 'INTEGER DEFAULT 300' },

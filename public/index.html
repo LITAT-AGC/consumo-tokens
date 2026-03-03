@@ -289,12 +289,25 @@
 
       <!-- Editor de Prompts -->
       <div class="card mb-4">
-        <div class="card-header d-flex justify-content-between align-items-center">
-          <h5 class="mb-0">
-            <i class="bi bi-pencil-square"></i> Prompts de Prueba
-          </h5>
-          <div>
-            <button class="btn btn-sm btn-outline-secondary" @click="loadPrompts" :disabled="loadingPrompts">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+          <div class="d-flex align-items-center gap-2">
+            <h5 class="mb-0 text-nowrap">
+              <i class="bi bi-pencil-square"></i> Prompts:
+            </h5>
+            <select v-model="selectedPromptSetId" class="form-select form-select-sm" style="min-width: 200px;">
+              <option v-for="set in promptSets" :key="set.id" :value="set.id">{{ set.name }}</option>
+            </select>
+          </div>
+          <div class="text-nowrap">
+            <button class="btn btn-sm btn-outline-success me-2" @click="createNewPromptSet">
+              <i class="bi bi-plus-circle"></i> Nuevo
+            </button>
+            <button class="btn btn-sm btn-outline-danger me-2" @click="deleteSelectedPromptSet"
+              :disabled="!selectedPromptSetId">
+              <i class="bi bi-trash"></i> Eliminar
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" @click="loadPromptsForSet"
+              :disabled="loadingPrompts || !selectedPromptSetId">
               <i class="bi bi-arrow-clockwise"></i> Recargar
             </button>
           </div>
@@ -331,7 +344,7 @@
                     :disabled="isRunning" :placeholder="'Escribe el prompt en ' + langLabel(p.lang) + '...'"></textarea>
                 </div>
                 <div class="card-footer py-1 d-flex justify-content-between align-items-center">
-                  <span class="save-indicator">
+                  <span class="save-indicator w-50 text-truncate">
                     <span v-if="p.saving" class="text-primary">
                       <span class="loading-spinner" style="width: 0.7rem; height: 0.7rem; border-width: 1px;"></span>
                       Guardando...
@@ -340,14 +353,23 @@
                       <i class="bi bi-check-circle"></i> Guardado
                     </span>
                     <span v-else-if="p.saveStatus === 'error'" class="text-danger">
-                      <i class="bi bi-x-circle"></i> Error al guardar
+                      <i class="bi bi-x-circle"></i> Error
                     </span>
                     <span v-else>&nbsp;</span>
                   </span>
-                  <button class="btn btn-sm btn-outline-primary" @click="savePrompt(p)"
-                    :disabled="!p.dirty || p.saving || isRunning">
-                    <i class="bi bi-save"></i> Guardar
-                  </button>
+                  <div class="text-end">
+                    <button v-if="p.lang !== 'en'" class="btn btn-sm btn-outline-info me-1 px-2"
+                      @click="translatePromptText(p.lang)" :disabled="translatingLang === p.lang || isRunning"
+                      title="Traducir usando el prompt en Inglés como base">
+                      <span v-if="translatingLang === p.lang" class="loading-spinner"
+                        style="width: 0.7rem; height: 0.7rem; border-width: 1px;"></span>
+                      <i v-else class="bi bi-translate"></i> Traducir In&rarr;{{ p.lang.toUpperCase() }}
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary px-2" @click="savePrompt(p)"
+                      :disabled="!p.dirty || p.saving || isRunning">
+                      <i class="bi bi-save"></i> Guardar
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -820,6 +842,9 @@
         const source = ref('free');
         const modelSearch = ref('');
         const maxTokensInput = ref(2000);
+        const promptSets = ref([]);
+        const selectedPromptSetId = ref(null);
+        const translatingLang = ref(null);
         const promptsData = ref([]);
         const loadingPrompts = ref(false);
         const isRunning = ref(false);
@@ -1079,10 +1104,28 @@
           return labels[lang] || lang;
         }
 
-        async function loadPrompts() {
+        async function loadPromptSets() {
+          try {
+            const res = await fetch('/api/prompt-sets');
+            const data = await res.json();
+            promptSets.value = data.promptSets || [];
+            // Select first if none selected
+            if (promptSets.value.length > 0 && !selectedPromptSetId.value) {
+              selectedPromptSetId.value = promptSets.value[0].id;
+            }
+          } catch (e) {
+            console.error('Error cargando prompt sets:', e);
+          }
+        }
+
+        async function loadPromptsForSet() {
+          if (!selectedPromptSetId.value) {
+            promptsData.value = [];
+            return;
+          }
           loadingPrompts.value = true;
           try {
-            const res = await fetch('/api/prompts');
+            const res = await fetch(`/api/prompt-sets/${selectedPromptSetId.value}/prompts`);
             const data = await res.json();
             promptsData.value = (data.prompts || []).map(p => ({
               lang: p.lang,
@@ -1098,11 +1141,92 @@
           }
         }
 
+        async function createNewPromptSet() {
+          const name = prompt('Nombre del nuevo juego de prompts (ej: Roleplay, Coding, etc):');
+          if (!name || !name.trim()) return;
+          try {
+            const res = await fetch('/api/prompt-sets', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: name.trim() })
+            });
+            const data = await res.json();
+            if (data.success) {
+              await loadPromptSets();
+              selectedPromptSetId.value = data.id;
+            } else {
+              alert('Error al crear: ' + data.error);
+            }
+          } catch (e) {
+            console.error('Error creando prompt set:', e);
+          }
+        }
+
+        async function deleteSelectedPromptSet() {
+          if (!selectedPromptSetId.value) return;
+          const currentSet = promptSets.value.find(s => s.id === selectedPromptSetId.value);
+          if (!currentSet) return;
+
+          showConfirm({
+            title: 'Eliminar Juego de Prompts',
+            message: `¿Eliminar permanentemente "${currentSet.name}" y todos sus textos?`,
+            variant: 'danger',
+            confirmLabel: 'Eliminar',
+            onConfirm: async () => {
+              try {
+                const res = await fetch(`/api/prompt-sets/${selectedPromptSetId.value}`, { method: 'DELETE' });
+                const data = await res.json();
+                if (data.success) {
+                  selectedPromptSetId.value = null;
+                  await loadPromptSets();
+                } else {
+                  alert('Error al eliminar: ' + data.error);
+                }
+              } catch (e) {
+                console.error('Error eliminando prompt set:', e);
+              }
+            }
+          });
+        }
+
+        async function translatePromptText(lang) {
+          if (lang === 'en') return;
+          const enPrompt = promptsData.value.find(p => p.lang === 'en');
+          if (!enPrompt || !enPrompt.content || enPrompt.content.trim() === '') {
+            alert('Debes definir el texto en Inglés (EN) primero para usarlo como base.');
+            return;
+          }
+          translatingLang.value = lang;
+          try {
+            const res = await fetch('/api/translate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: enPrompt.content, targetLang: lang })
+            });
+            const data = await res.json();
+            if (data.success && data.translatedText) {
+              const targetPrompt = promptsData.value.find(p => p.lang === lang);
+              if (targetPrompt) {
+                targetPrompt.content = data.translatedText;
+                targetPrompt.dirty = true;
+              }
+            } else {
+              alert('Error al traducir: ' + (data.error || 'Desconocido'));
+            }
+          } catch (err) {
+            console.error('Error al traducir:', err);
+            alert('Error de red al intentar traducir.');
+          } finally {
+            translatingLang.value = null;
+          }
+        }
+
         async function savePrompt(prompt) {
+          if (!selectedPromptSetId.value) return;
           prompt.saving = true;
           prompt.saveStatus = '';
           try {
-            const res = await fetch(`/api/prompts/${prompt.lang}`, {
+            const res = await fetch(`/api/prompt-sets/${selectedPromptSetId.value}/prompts/${prompt.lang}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ content: prompt.content })
@@ -1174,6 +1298,7 @@
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
+                    promptSetId: selectedPromptSetId.value,
                     modelIds: selectedModels.value,
                     source: source.value,
                     maxTokens: parseInt(maxTokensInput.value) || 2000
@@ -1809,10 +1934,16 @@
         watch(groupedResults, () => { drawCharts(); }, { deep: true });
         watch(selectedModelName, () => { drawRadarChart(); });
 
+        watch(selectedPromptSetId, () => {
+          if (selectedPromptSetId.value) {
+            loadPromptsForSet();
+          }
+        });
+
         onMounted(() => {
           loadModels();
           loadResults().then(() => drawCharts());
-          loadPrompts();
+          loadPromptSets();
           connectWebSocket();
         });
 
@@ -1836,6 +1967,9 @@
           currentModels,
           filteredModels,
           estimatedCost,
+          promptSets,
+          selectedPromptSetId,
+          translatingLang,
           promptsData,
           loadingPrompts,
           totalPromptChars,
@@ -1864,7 +1998,11 @@
           formatPrice,
           langLabel,
           loadModels,
-          loadPrompts,
+          loadPromptSets,
+          loadPromptsForSet,
+          createNewPromptSet,
+          deleteSelectedPromptSet,
+          translatePromptText,
           savePrompt,
           toggleModel,
           selectAll,

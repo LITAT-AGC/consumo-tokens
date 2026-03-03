@@ -2,7 +2,7 @@ require('dotenv').config();
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 const fs = require('fs/promises');
 const path = require('path');
-const { createRun, finishRun, saveResult } = require('./database');
+const { createRun, finishRun, saveResult, getPromptsBySet } = require('./database');
 const { generateSummary } = require('./generate-summary');
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
@@ -76,16 +76,6 @@ async function fetchNativeTokens(generationId) {
     }
   }
   return null;
-}
-
-async function loadTestCasesFromMarkdown() {
-  const testCases = [];
-  for (const lang of PROMPT_LANGS) {
-    const filePath = path.join(PROMPTS_DIR, `${lang}.md`);
-    const prompt = (await fs.readFile(filePath, 'utf8')).trim();
-    testCases.push({ lang, prompt });
-  }
-  return testCases;
 }
 
 async function fetchModelsCatalog() {
@@ -243,6 +233,7 @@ class BenchmarkRunner {
     this.models = options.models || [];
     this.source = options.source || 'free';
     this.maxTokens = options.maxTokens || 2000;
+    this.promptSetId = options.promptSetId;
     this.wss = options.wss;
     this.testCases = [];
     this.totalTests = 0;
@@ -252,10 +243,18 @@ class BenchmarkRunner {
 
   async start() {
     try {
-      console.log(`\n🚀 Iniciando benchmark [${this.source}] con ${this.models.length} modelo(s)`);
+      console.log(`\n🚀 Iniciando benchmark [${this.source}] con ${this.models.length} modelo(s) usando Prompt Set ID ${this.promptSetId}`);
       this.models.forEach(m => console.log(`   - ${m.name} (${m.id})`));
 
-      this.testCases = await loadTestCasesFromMarkdown();
+      const rawPrompts = getPromptsBySet(this.promptSetId);
+      this.testCases = rawPrompts
+        .filter(p => p.content && p.content.trim().length > 0)
+        .map(p => ({ lang: p.lang, prompt: p.content }));
+
+      if (this.testCases.length === 0) {
+        throw new Error('El juego de prompts seleccionado no tiene contenido en ningún idioma.');
+      }
+
       this.totalTests = this.models.length * this.testCases.length;
       const maxTokens = this.maxTokens;
       const temperature = 0.1;
