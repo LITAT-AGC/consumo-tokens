@@ -13,6 +13,17 @@ Al ejecutar `npm start` y abrir http://localhost:3050, la tabla de resultados mu
 | **Output** | Tokens de salida |
 | **Total** | Tokens totales |
 
+## Análisis automático por IA
+
+A partir de las actualizaciones recientes, al completar cada ejecución de benchmark, el sistema enviará en segundo plano un resumen de las métricas obtenidas (junto al conteo de tokens nativos y la presencia de errores) a un LLM avanzado (`anthropic/claude-3.5-sonnet` por defecto).
+
+Este modelo analizará y redactará un informe comparativo que detalla:
+- El comportamiento del modelo en diferentes idiomas
+- Su eficiencia penalizando u optimizando tokens
+- Recomendaciones de uso práctico
+
+Este análisis puede visualizarse inmediatamente en la UI del Frontend y también se conserva en cada exportación a HTML.
+
 ## Script de análisis
 
 ```bash
@@ -55,6 +66,10 @@ Los resultados se almacenan en SQLite. Columnas relevantes para análisis:
 | `total` | Tokens totales |
 | `native_input` | Tokens nativos del proveedor (si están disponibles) |
 | `native_output` | Tokens de salida nativos |
+
+### Tabla `runs`
+
+La tabla de `runs` no solo registra metadatos globales sino que también almacena en la columna `summary` el resultado de los informes Markdown generados por el LLM analista configurado.
 
 ### Consulta SQL útil
 

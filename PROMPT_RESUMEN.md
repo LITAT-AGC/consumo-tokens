@@ -8,6 +8,7 @@ El JSON de entrada tiene dos secciones:
 
 ### `configuracion`
 Metadatos del benchmark: lista de modelos evaluados, número de tests, fuente (free/paid) y max tokens de respuesta configurados.
+Se incluye también `prompt_ingles`, que contiene el prompt exacto utilizado en las pruebas en inglés.
 
 ### `resultados`
 Array de objetos, uno por cada combinación modelo×idioma. Cada objeto tiene:
@@ -27,8 +28,9 @@ Array de objetos, uno por cada combinación modelo×idioma. Cada objeto tiene:
 Analiza los resultados y genera un informe comparativo en Markdown con esta estructura:
 
 1. **Resumen General**: Cuántos modelos se evaluaron, cuántas pruebas, y una síntesis del resultado global.
-2. **Análisis por Idioma**: Cómo varía el consumo de tokens (`input`/`output`/`total`) según el idioma (EN vs ES vs ZH). ¿Qué modelos penalizan más los idiomas no-ingleses?
-3. **Comparativa de Modelos**: Compara la eficiencia entre modelos. ¿Cuál consume menos tokens en total? ¿Hay diferencias grandes entre modelos para el mismo idioma?
-4. **Recomendaciones Finales**: Recomendaciones prácticas concretas basadas estrictamente en los datos. Ejemplos: mejor modelo para apps multilingüe, mejor opción para minimizar costos de tokenización, etc.
+2. **Análisis del Prompt**: Análisis (en español) sobre el tipo de contenido del prompt original (incluido en `prompt_ingles`) y cómo su formato o propósito afecta al consumo y generación de tokens, ya que dependiendo del prompt los tokens de salida pueden variar.
+3. **Análisis por Idioma**: Cómo varía el consumo de tokens (`input`/`output`/`total`) según el idioma (EN vs ES vs ZH). ¿Qué modelos penalizan más los idiomas no-ingleses?
+4. **Comparativa de Modelos**: Compara la eficiencia entre modelos. ¿Cuál consume menos tokens en total? ¿Hay diferencias grandes entre modelos para el mismo idioma?
+5. **Recomendaciones Finales**: Recomendaciones prácticas concretas basadas estrictamente en los datos. Ejemplos: mejor modelo para apps multilingüe, mejor opción para minimizar costos de tokenización, etc.
 
-Basa tu análisis **exclusivamente** en los valores numéricos de los datos JSON proporcionados. No inventes cifras. Si una prueba tiene `error` no nulo, menciónala brevemente pero centra el análisis en las pruebas exitosas. Sé directo, profesional y conciso.
+Basa tu análisis **exclusivamente** en los valores numéricos de los datos JSON y en el texto del prompt proporcionado. No inventes cifras. Si una prueba tiene `error` no nulo, menciónala brevemente pero centra el análisis en las pruebas exitosas. Sé directo, profesional y conciso.

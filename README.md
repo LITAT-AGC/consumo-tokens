@@ -29,7 +29,8 @@ Abre http://localhost:3050 en tu navegador. Desde la interfaz puedes:
 1. Seleccionar modelos (gratuitos o pagos)
 2. Ejecutar benchmarks con seguimiento en tiempo real
 3. Ver resultados en tabla con datos de tokens por idioma
-4. Consultar historial de ejecuciones
+4. Análisis automáticos generados por IA al finalizar cada benchmark
+5. Consultar historial de ejecuciones
 
 ### Analizar resultados
 
@@ -55,8 +56,10 @@ Ver [docs/analisis-resultados.md](docs/analisis-resultados.md) para interpretar 
 ├─ benchmark-runner.js       # Ejecutor de benchmarks
 ├─ database.js               # Gestión SQLite
 ├─ analyze-results.js        # Análisis de resultados
+├─ generate-summary.js       # Generador de resúmenes por IA (vía Claude/OpenRouter)
 ├─ public/index.html         # Interfaz web
-├─ prompts/                  # Prompts por idioma (EN, ES, ZH)
+├─ prompts/                  # (Legado) Prompts por idioma para inicialización BD
+├─ PROMPT_RESUMEN.md         # Prompt del sistema para el generador de resúmenes
 └─ docs/                     # Documentación
 ```
 

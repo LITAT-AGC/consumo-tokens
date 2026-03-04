@@ -383,7 +383,8 @@ class BenchmarkRunner {
         models: this.models,
         tests: this.totalTests,
         source: this.source,
-        maxTokens: this.maxTokens
+        maxTokens: this.maxTokens,
+        promptSetId: this.promptSetId
       }).then((summaryText) => {
         this.broadcast({
           type: 'summaryReady',

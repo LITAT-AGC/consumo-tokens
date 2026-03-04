@@ -18,12 +18,11 @@
 ├── index.js                 # Servidor Express + WebSocket (punto de entrada)
 ├── database.js              # Capa de datos SQLite (esquema + funciones CRUD)
 ├── benchmark-runner.js      # Motor de benchmarks (llama a OpenRouter)
+├── generate-summary.js      # Generador de resúmenes por IA (vía Claude/OpenRouter)
 ├── public/
 │   └── index.html           # Frontend completo (Vue 3 SPA, ~1700 líneas)
-├── prompts/                 # Prompts de prueba por idioma
+├── prompts/                 # (Legado) Prompts base para inicializar la BD
 │   ├── en.md                #   Inglés
-│   ├── es.md                #   Español
-│   ├── zh.md                #   Chino
 │   ├── tool-calling-en.md   #   Tool calling (EN)
 │   ├── tool-calling-es.md   #   Tool calling (ES)
 │   └── tool-calling-zh.md   #   Tool calling (ZH)
@@ -43,7 +42,9 @@
 ├── .env.example             # Plantilla de variables de entorno
 ├── .model-blacklist.json    # Modelos excluidos automáticamente
 ├── package.json             # Dependencias y scripts npm
+├── PROMPT_RESUMEN.md        # Prompt del sistema para el generador de resúmenes
 └── benchmark.db             # Base de datos SQLite (no versionada)
+
 ```
 
 ---
@@ -51,6 +52,27 @@
 ## Base de Datos (SQLite)
 
 Archivo: `benchmark.db` — gestionado en `database.js`.
+
+### Tabla `prompt_sets`
+
+Agrupa los prompts bajo un nombre de juego (ej. "Default Prompts").
+
+| Columna      | Tipo    | Descripción                                 |
+|--------------|---------|---------------------------------------------|
+| `id`         | INTEGER | PK autoincremental                          |
+| `name`       | TEXT    | Nombre del juego de prompts                 |
+| `created_at` | TEXT    | Fecha/hora de creación (ISO)                |
+
+### Tabla `prompts`
+
+Almacena el texto de los prompts en diferentes idiomas asignados a un juego.
+
+| Columna      | Tipo    | Descripción                                 |
+|--------------|---------|---------------------------------------------|
+| `set_id`     | INTEGER | FK → `prompt_sets.id`                       |
+| `lang`       | TEXT    | Idioma del prompt: `en`, `es`, `zh`         |
+| `content`    | TEXT    | Contenido del prompt en Markdown            |
+| `created_at` | TEXT    | Fecha/hora de creación o última modificación|
 
 ### Tabla `runs`
 
@@ -66,6 +88,7 @@ Cada ejecución de benchmark crea un **run**.
 | `source`      | TEXT    | `free` o `paid`                             |
 | `max_tokens`  | INTEGER | max_tokens usado (default 300)              |
 | `temperature` | REAL    | Temperatura usada (default 0.1)             |
+| `summary`     | TEXT    | Análisis Markdown generado por IA (nullable)|
 
 ### Tabla `results`
 
@@ -127,6 +150,7 @@ DELETE FROM runs WHERE id = ?;
 | `saveResult(runId, data)`   | Guarda un resultado individual                          |
 | `getAllResults()`           | Retorna los 20 últimos runs + resultados del más reciente|
 | `getResultsByRun(runId)`    | Retorna run + resultados de un run específico            |
+| `saveRunSummary(runId, md)` | Guarda un resumen generado por IA en un run específico   |
 | `clearOldRuns()`            | Mantiene solo los últimos 50 runs                       |
 | `deleteRun(runId)`          | Elimina un run y todos sus resultados                   |
 
@@ -138,15 +162,20 @@ DELETE FROM runs WHERE id = ?;
 
 Servidor Express en `index.js`, puerto configurable vía `PORT` (default `3050`).
 
-| Método   | Ruta                     | Descripción                                                  |
-|----------|--------------------------|--------------------------------------------------------------|
-| `GET`    | `/api/models`            | Lista modelos disponibles (free y paid) desde OpenRouter     |
-| `GET`    | `/api/prompts`           | Retorna los prompts actuales (en, es, zh) con su contenido   |
-| `PUT`    | `/api/prompts/:lang`     | Actualiza el contenido de un prompt (`lang`: en, es, zh)     |
-| `GET`    | `/api/results`           | Retorna los 20 últimos runs + resultados del run más reciente|
-| `GET`    | `/api/results/:runId`    | Retorna run + resultados de un run específico                |
-| `DELETE` | `/api/runs/:runId`       | Elimina un run y sus resultados                              |
-| `POST`   | `/api/benchmark/start`   | Inicia un benchmark (body: `{modelIds: [...], source: "free"|"paid"}`) |
+| Método   | Ruta                                   | Descripción                                                  |
+|----------|----------------------------------------|--------------------------------------------------------------|
+| `GET`    | `/api/models`                          | Lista modelos disponibles (free y paid) desde OpenRouter     |
+| `GET`    | `/api/prompt-sets`                     | Retorna todos los juegos de prompts                          |
+| `POST`   | `/api/prompt-sets`                     | Crea un nuevo juego de prompts                               |
+| `PUT`    | `/api/prompt-sets/:id`                 | Renombra un juego de prompts existente                       |
+| `DELETE` | `/api/prompt-sets/:id`                 | Elimina un juego de prompts y sus textos asociados           |
+| `GET`    | `/api/prompt-sets/:id/prompts`         | Retorna los prompts (en, es, zh) de un juego específico      |
+| `PUT`    | `/api/prompt-sets/:id/prompts/:lang`   | Actualiza el contenido de un prompt en un idioma             |
+| `POST`   | `/api/translate`                       | Traduce un texto usando IA conservando el Markdown           |
+| `GET`    | `/api/results`                         | Retorna los 20 últimos runs + resultados del run más reciente|
+| `GET`    | `/api/results/:runId`                  | Retorna run + resultados de un run específico                |
+| `DELETE` | `/api/runs/:runId`                     | Elimina un run y sus resultados                              |
+| `POST`   | `/api/benchmark/start`                 | Inicia un benchmark (body: `{modelIds: [...], promptSetId: 1, source: "free"\|"paid"}`) |
 
 ### Archivos Estáticos
 
@@ -169,6 +198,7 @@ Conexión en `ws://localhost:3050`. Usado para enviar progreso del benchmark en 
 | `error`          | Error en un test                             | `model`, `lang`, `error`         |
 | `modelComplete`  | Modelo completado                            | `model`, `modelIndex`            |
 | `complete`       | Benchmark finalizado                         | `runId`, `totalTests`            |
+| `summaryReady`   | Resumen de IA completado                     | `runId`, `summary`               |
 | `fatalError`     | Error fatal que detiene el benchmark         | `error`                          |
 
 ---
@@ -179,7 +209,7 @@ SPA de ~1700 líneas con Vue 3 (Composition API, `setup()`) + Bootstrap 5 + Char
 
 ### Componentes / Secciones
 
-1. **Editor de Prompts** — Editar prompts EN/ES/ZH, guardar vía API PUT
+1. **Editor de Prompts** — Gestor de juegos de prompts, selector, traducción IA entre idiomas (EN/ES/ZH), guardar vía API.
 2. **Selector de Modelos** — Toggle free/paid, búsqueda, selección múltiple
 3. **Estimación de Costo** — Solo modelos pagos, estima costo basado en tokens
 4. **Barra de Progreso** — Sticky, muestra progreso del benchmark vía WebSocket
@@ -205,6 +235,7 @@ SPA de ~1700 líneas con Vue 3 (Composition API, `setup()`) + Bootstrap 5 + Char
 | Variable               | Requerida | Default | Descripción                                     |
 |------------------------|-----------|---------|--------------------------------------------------|
 | `OPENROUTER_API_KEY`   | ✅ Sí     | —       | API key de OpenRouter                            |
+| `SUMMARY_MODEL`        | No        | `...`   | Modelo a usar para generar resúmenes (`anthropic/claude-3.5-sonnet` por defecto) |
 | `PORT`                 | No        | `3050`  | Puerto del servidor                              |
 | `MODEL_SOURCE`         | No        | `free`  | `free` o `paid`                                  |
 | `PREFERRED_FREE_MODELS`| No        | —       | IDs de modelos `:free` preferidos (CSV)          |
@@ -252,10 +283,9 @@ SPA de ~1700 líneas con Vue 3 (Composition API, `setup()`) + Bootstrap 5 + Char
 
 ### Agregar un nuevo idioma de prompt
 
-1. Crear el archivo `prompts/{lang}.md` con el contenido del prompt
-2. Actualizar `PROMPT_LANGS` en `benchmark-runner.js` (L13)
-3. Actualizar `validLangs` en el endpoint PUT de `index.js` (L71)
-4. Actualizar el frontend: array de `langs` en `/api/prompts` GET (L54) y los badges de idioma en la tabla de resultados
+1. Añadir el nuevo idioma a la constante `langs` en los endpoints del frontend y API referidos a prompts.
+2. Actualizar validaciones de idiomas soportados en `database.js` y en la inserción/actualización de `index.js`.
+3. Actualizar el frontend: añadir la tab/botón de traducción correspondiente y las columnas en las tablas/exportaciones.
 
 ### Modificar el frontend
 
@@ -280,9 +310,9 @@ SPA de ~1700 líneas con Vue 3 (Composition API, `setup()`) + Bootstrap 5 + Char
 ```
 1. Usuario selecciona modelos en la UI y pulsa "Iniciar Benchmark"
 2. Frontend → POST /api/benchmark/start { modelIds, source }
-3. Servidor crea BenchmarkRunner con los modelos seleccionados
+3. Servidor crea BenchmarkRunner con los modelos y el promptSetId
 4. BenchmarkRunner:
-   a. Carga prompts de prompts/*.md
+   a. Carga prompts desde la BD para el promptSetId dado
    b. Crea un "run" en la BD → obtiene runId
    c. Para cada modelo:
       - Para cada idioma (en, es, zh):
@@ -293,6 +323,7 @@ SPA de ~1700 líneas con Vue 3 (Composition API, `setup()`) + Bootstrap 5 + Char
         - Guarda resultado en BD (saveResult)
         - Envía progreso vía WebSocket
    d. Marca el run como completed/failed
+   e. Genera el resumen con IA y emite evento summaryReady
 5. Frontend recibe eventos WebSocket y actualiza la UI en tiempo real
 ```
 

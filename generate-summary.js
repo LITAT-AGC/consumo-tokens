@@ -1,8 +1,7 @@
 const fs = require('fs/promises');
 const path = require('path');
+const { saveRunSummary, getResultsByRun, getPromptsBySet } = require('./database');
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
-const { saveRunSummary, getResultsByRun } = require('./database');
-
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const SUMMARY_MODEL = process.env.SUMMARY_MODEL || 'anthropic/claude-3.5-sonnet';
 const BASE_URL = 'https://openrouter.ai/api/v1';
@@ -19,6 +18,16 @@ async function generateSummary(runId, runData) {
 
     // Obtener resultados completos desde la base de datos
     const dbData = getResultsByRun(runId);
+
+    // Obtener el prompt en inglés para enviárselo al LLM
+    let promptIngles = '';
+    if (runData.promptSetId) {
+      const prompts = getPromptsBySet(runData.promptSetId);
+      const promptObj = prompts.find(p => p.lang === 'en');
+      if (promptObj) {
+        promptIngles = promptObj.content;
+      }
+    }
 
     if (!dbData.results || dbData.results.length === 0) {
       throw new Error(`No se encontraron resultados en la BD para el run #${runId}`);
@@ -63,7 +72,8 @@ async function generateSummary(runId, runData) {
         tests_fallidos: failCount,
         idiomas_testeados: ['en', 'es', 'zh'],
         fuente: runData.source,
-        max_tokens_respuesta: runData.maxTokens
+        max_tokens_respuesta: runData.maxTokens,
+        prompt_ingles: promptIngles
       },
       resultados
     };

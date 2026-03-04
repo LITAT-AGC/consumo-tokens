@@ -40,5 +40,5 @@ TARGET_PROVIDER_TAGS=openai,anthropic,gemini,deepseek,qwen
 ## Notas
 
 - La disponibilidad de modelos `:free` cambia según OpenRouter.
-- Los prompts se leen desde la carpeta `prompts/` (archivos `en.md`, `es.md`, `zh.md`).
+- Los prompts se gestionan a través de la interfaz web y se almacenan en la base de datos (se inicializan desde la carpeta `prompts/` la primera vez).
 - Los resultados se persisten en una base de datos SQLite local.
