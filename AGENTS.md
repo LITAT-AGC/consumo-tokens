@@ -29,7 +29,6 @@
 ├── docs/                    # Documentación del proyecto
 │   ├── configuracion.md
 │   ├── analisis-resultados.md
-│   ├── costos-por-idioma.md
 │   ├── fundamentos.md
 │   └── modelos-pagos.md
 ├── analyze-results.js       # Script CLI: análisis de resultados guardados

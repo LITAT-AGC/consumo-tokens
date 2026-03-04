@@ -67,6 +67,5 @@ Ver [docs/analisis-resultados.md](docs/analisis-resultados.md) para interpretar 
 
 - [Configuración](docs/configuracion.md) - Variables de entorno
 - [Análisis de resultados](docs/analisis-resultados.md) - Interpretación de datos y anomalías conocidas
-- [Costos por idioma](docs/costos-por-idioma.md) - Comparación de costos EN/ES/ZH
 - [Fundamentos](docs/fundamentos.md) - Filosofía y decisiones del proyecto
 - [Modelos pagos](docs/modelos-pagos.md) - Listado de modelos con precios
