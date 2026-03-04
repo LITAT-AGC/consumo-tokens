@@ -62,7 +62,8 @@ function verifyStructure() {
   const expectedResultsColumns = [
     'id', 'run_id', 'model', 'lang', 'input', 'output', 'total',
     'prompt_text', 'response_text', 'error', 'created_at',
-    'native_input', 'native_output', 'native_reasoning', 'native_cached', 'generation_id'
+    'native_input', 'native_output', 'native_reasoning', 'native_cached', 'generation_id',
+    'or_reasoning'
   ];
   const missingResultsColumns = expectedResultsColumns.filter(col => !resultsInfo.find(c => c.name === col));
 

@@ -175,6 +175,7 @@ Servidor Express en `index.js`, puerto configurable vía `PORT` (default `3050`)
 | `GET`    | `/api/results/:runId`                  | Retorna run + resultados de un run específico                |
 | `DELETE` | `/api/runs/:runId`                     | Elimina un run y sus resultados                              |
 | `POST`   | `/api/benchmark/start`                 | Inicia un benchmark (body: `{modelIds: [...], promptSetId: 1, source: "free"\|"paid"}`) |
+| `POST`   | `/api/benchmark/resume/:runId`         | Reanuda un benchmark incompleto o atascado saltando los tests ya finalizados |
 
 ### Archivos Estáticos
 
@@ -212,7 +213,7 @@ SPA de ~1700 líneas con Vue 3 (Composition API, `setup()`) + Bootstrap 5 + Char
 2. **Selector de Modelos** — Toggle free/paid, búsqueda, selección múltiple
 3. **Estimación de Costo** — Solo modelos pagos, estima costo basado en tokens
 4. **Barra de Progreso** — Sticky, muestra progreso del benchmark vía WebSocket
-5. **Tabla de Resultados** — Agrupados por modelo, tokens por idioma, selector de run
+5. **Tabla de Resultados** — Agrupados por modelo, tokens por idioma, selector de run, botón para **Continuar** runs incompletos o atascados.
 6. **Gráficas** — 4 charts (barras agrupadas, ranking, apiladas, radar) con Chart.js
 7. **Recomendaciones** — Idioma más eficiente por modelo
 8. **Detalle** — Tabla con input/output/nativo/diff vs EN

@@ -2,7 +2,7 @@ require('dotenv').config();
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 const fs = require('fs/promises');
 const path = require('path');
-const { createRun, finishRun, saveResult, getPromptsBySet } = require('./database');
+const { createRun, finishRun, saveResult, getPromptsBySet, getResultsByRun, deleteFailedResults } = require('./database');
 const { generateSummary } = require('./generate-summary');
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
@@ -206,9 +206,14 @@ async function callOpenRouter(modelId, prompt, maxTokens = 300, temperature = 0.
       }
 
       const data = await response.json();
+
+      // Extraer reasoning tokens si el modelo los reporta (e.g., o1, o3-mini, deepseek-r1)
+      const reasoningTokens = data.usage?.completion_tokens_details?.reasoning_tokens || 0;
+
       return {
         input: data.usage?.prompt_tokens || 0,
         output: data.usage?.completion_tokens || 0,
+        reasoning: reasoningTokens,
         total: data.usage?.total_tokens || 0,
         content: data.choices?.[0]?.message?.content || null,
         generationId: data.id || null
@@ -238,7 +243,8 @@ class BenchmarkRunner {
     this.testCases = [];
     this.totalTests = 0;
     this.completedTests = 0;
-    this.runId = null;
+    this.runId = options.resumeRunId || null;
+    this.existingResultsMap = new Map(); // Para rastrear tests exitosos al reanudar
   }
 
   async start() {
@@ -258,9 +264,27 @@ class BenchmarkRunner {
       this.totalTests = this.models.length * this.testCases.length;
       const maxTokens = this.maxTokens;
       const temperature = 0.1;
-      this.runId = createRun(this.source, this.models.length, maxTokens, temperature);
 
-      console.log(`\n📊 Run #${this.runId} creado - ${this.totalTests} tests totales`);
+      if (this.runId) {
+        console.log(`\n⏳ Reanudando Run #${this.runId}...`);
+        // Limpiar errores previos de la base de datos
+        deleteFailedResults(this.runId);
+
+        // Obtener resultados exitosos existentes
+        const { results } = getResultsByRun(this.runId);
+        const successfulResults = results.filter(r => !r.error);
+
+        for (const res of successfulResults) {
+          const key = `${res.model}_${res.lang}`;
+          this.existingResultsMap.set(key, res);
+        }
+
+        this.completedTests = successfulResults.length;
+        console.log(`   ⏭  Saltando ${this.completedTests} tests ya completados exitosamente.`);
+      } else {
+        this.runId = createRun(this.source, this.models.length, maxTokens, temperature, this.promptSetId, this.models.map(m => m.id));
+        console.log(`\n📊 Run #${this.runId} creado - ${this.totalTests} tests totales`);
+      }
 
       this.broadcast({
         type: 'start',
@@ -291,6 +315,21 @@ class BenchmarkRunner {
           });
 
           try {
+            const resultKey = `${model.name}_${testCase.lang}`;
+            if (this.existingResultsMap.has(resultKey)) {
+              console.log(`   ⏭  Saltando ${model.name} [${testCase.lang}] - ya completado en ejecución anterior`);
+
+              // Transmitir el resultado existente al frontend
+              const existingResult = this.existingResultsMap.get(resultKey);
+              this.broadcast({
+                type: 'result',
+                ...existingResult,
+                progress: this.completedTests, // Ya fue incrementado al inicio
+                total: this.totalTests
+              });
+              continue;
+            }
+
             await sleep(INVOCATION_DELAY_MS);
 
             // 1. Llamar a OpenRouter
@@ -313,6 +352,7 @@ class BenchmarkRunner {
               lang: testCase.lang,
               input: usage.input,
               output: usage.output,
+              or_reasoning: usage.reasoning || null,
               total: usage.total,
               prompt_text: testCase.prompt,
               response_text: usage.content,
@@ -371,7 +411,9 @@ class BenchmarkRunner {
       }
 
       finishRun(this.runId, 'completed');
-      console.log(`\n✅ Benchmark completado - Run #${this.runId}`);
+
+      const isResumed = this.existingResultsMap.size > 0;
+      console.log(`\n✅ Benchmark completado ${isResumed ? '(Reanudado) ' : ''}- Run #${this.runId}`);
       this.broadcast({
         type: 'complete',
         runId: this.runId,

@@ -439,6 +439,10 @@
                     @click.stop="toggleModel(model.id)">
                   <label class="form-check-label model-name">
                     {{ model.name }}
+                    <span v-if="isReasoningModel(model.name)" class="badge bg-warning text-dark ms-1"
+                      style="font-size: 0.65rem;" title="Modelo con reasoning tokens">
+                      <i class="bi bi-lightbulb-fill"></i>
+                    </span>
                   </label>
                 </div>
                 <div v-if="model.inputPerMillion != null || model.outputPerMillion != null"
@@ -473,6 +477,12 @@
               y max_tokens={{ maxTokensInput }} de output. El costo real puede variar.
             </small>
           </p>
+          <div class="alert alert-info py-2 mb-3" role="alert" style="font-size: 0.9rem;">
+            <i class="bi bi-lightbulb-fill"></i> <strong>Nota sobre modelos razonadores:</strong>
+            Los reasoning tokens (modelos como o1, o3-mini, deepseek-r1) se cobran al mismo precio que los output
+            tokens.
+            El max_tokens incluye tanto output visible como razonamiento interno.
+          </div>
           <div class="row">
             <div class="col-md-4">
               <div class="text-center">
@@ -519,6 +529,10 @@
               title="Eliminar este benchmark">
               <i class="bi bi-trash"></i>
             </button>
+            <button class="btn btn-sm btn-warning d-flex align-items-center gap-1" v-if="canResumeRun"
+              @click="resumeRun" :disabled="isRunning">
+              <i class="bi bi-play-circle"></i> Continuar
+            </button>
             <button class="btn btn-sm btn-primary d-flex align-items-center gap-1" @click="exportToHTML"
               :disabled="results.length === 0">
               <i class="bi bi-filetype-html"></i> Exportar
@@ -547,7 +561,13 @@
                 <tr v-for="modelGroup in groupedResults" :key="modelGroup.name"
                   @click="selectResultModel(modelGroup.name)"
                   :class="{ 'table-active': selectedModelName === modelGroup.name }" style="cursor: pointer;">
-                  <td class="model-name">{{ modelGroup.name }}</td>
+                  <td class="model-name">
+                    {{ modelGroup.name }}
+                    <span v-if="hasReasoningTokens(modelGroup)" class="badge bg-warning text-dark ms-2"
+                      style="font-size: 0.7rem;" title="Este modelo utiliza reasoning tokens">
+                      <i class="bi bi-lightbulb-fill"></i> Reasoning
+                    </span>
+                  </td>
                   <td>
                     <span v-if="modelGroup.results.en" class="badge bg-light text-dark">
                       {{ modelGroup.results.en.total }}
@@ -581,7 +601,7 @@
                     </span>
                     <span v-else class="text-muted">-</span>
                   </td>
-                  <td>{{ modelGroup.successCount }}/{{ modelGroup.totalCount }}</td>
+                  <td>{{ modelGroup.successCount }}/3</td>
                   <td>
                     <span v-if="modelGroup.isComplete" class="status-completed">
                       <i class="bi bi-check-circle-fill"></i>
@@ -703,32 +723,68 @@
           </button>
         </div>
         <div class="card-body">
-          <table class="table table-sm">
-            <thead>
-              <tr>
-                <th>Modelo</th>
-                <th>Idioma</th>
-                <th class="text-end">Input (OR)</th>
-
-                <th class="text-end">Output</th>
-                <th class="text-end">Total</th>
-                <th class="text-end">Diff vs EN</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="r in selectedModelDetails" :key="r.model + r.lang" @click="showTestDetails(r)"
-                class="cursor-pointer table-hover-row">
-                <td>{{ r.model }}</td>
-                <td><span class="badge bg-secondary">{{ r.lang.toUpperCase() }}</span></td>
-                <td class="text-end">{{ r.input }}</td>
-                <td class="text-end">{{ r.output }}</td>
-                <td class="text-end"><strong>{{ r.total }}</strong></td>
-                <td class="text-end" :class="getTotalDiffClass(r)">
-                  {{ getTotalDiff(r) }}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered" style="font-size: 0.85rem;">
+              <thead class="table-light">
+                <tr>
+                  <th rowspan="2" style="vertical-align: middle;">Modelo</th>
+                  <th rowspan="2" style="vertical-align: middle;">Idioma</th>
+                  <th colspan="3" class="text-center bg-info bg-opacity-10">OpenRouter Tokens</th>
+                  <th colspan="4" class="text-center bg-success bg-opacity-10">Native Provider Tokens</th>
+                  <th rowspan="2" class="text-end" style="vertical-align: middle;">Total</th>
+                  <th rowspan="2" class="text-end" style="vertical-align: middle;">Diff vs EN</th>
+                </tr>
+                <tr>
+                  <th class="text-end" title="Input tokens reportados por OpenRouter">Input</th>
+                  <th class="text-end" title="Output tokens reportados por OpenRouter">Output</th>
+                  <th class="text-end" title="Reasoning tokens reportados por OpenRouter (o1, deepseek-r1, etc.)">
+                    Reasoning</th>
+                  <th class="text-end" title="Input tokens nativos del proveedor">Input</th>
+                  <th class="text-end" title="Output tokens nativos del proveedor">Output</th>
+                  <th class="text-end" title="Reasoning tokens nativos del proveedor">Reasoning</th>
+                  <th class="text-end" title="Cached tokens del proveedor">Cached</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="r in selectedModelDetails" :key="r.model + r.lang" @click="showTestDetails(r)"
+                  class="cursor-pointer table-hover-row">
+                  <td>{{ r.model }}</td>
+                  <td><span class="badge bg-secondary">{{ r.lang.toUpperCase() }}</span></td>
+                  <td class="text-end">{{ r.input }}</td>
+                  <td class="text-end">{{ r.output }}</td>
+                  <td class="text-end">
+                    <span v-if="r.or_reasoning" class="badge bg-warning text-dark" title="Reasoning tokens">{{
+                      r.or_reasoning }}</span>
+                    <span v-else class="text-muted">-</span>
+                  </td>
+                  <td class="text-end">
+                    <span v-if="r.native_input != null"
+                      :class="{'text-danger': Math.abs(r.native_input - r.input) > 50}">{{ r.native_input }}</span>
+                    <span v-else class="text-muted">-</span>
+                  </td>
+                  <td class="text-end">
+                    <span v-if="r.native_output != null"
+                      :class="{'text-danger': Math.abs(r.native_output - r.output) > 50}">{{ r.native_output }}</span>
+                    <span v-else class="text-muted">-</span>
+                  </td>
+                  <td class="text-end">
+                    <span v-if="r.native_reasoning" class="badge bg-warning text-dark"
+                      title="Native reasoning tokens">{{ r.native_reasoning }}</span>
+                    <span v-else class="text-muted">-</span>
+                  </td>
+                  <td class="text-end">
+                    <span v-if="r.native_cached" class="badge bg-secondary" title="Cached tokens">{{ r.native_cached
+                      }}</span>
+                    <span v-else class="text-muted">-</span>
+                  </td>
+                  <td class="text-end"><strong>{{ r.total }}</strong></td>
+                  <td class="text-end" :class="getTotalDiffClass(r)">
+                    {{ getTotalDiff(r) }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -820,8 +876,33 @@
           </div>
           <div class="modal-footer justify-content-between bg-light" v-if="selectedTest">
             <div class="text-muted small">
-              <i class="bi bi-clock"></i> ID Generación: {{ selectedTest.generation_id || 'N/A' }} |
-              Total Tokens: <strong>{{ selectedTest.total }}</strong>
+              <div class="mb-1">
+                <i class="bi bi-clock"></i> ID Generación: <strong>{{ selectedTest.generation_id || 'N/A' }}</strong>
+              </div>
+              <div class="d-flex gap-3 flex-wrap">
+                <span title="OpenRouter Input"><i class="bi bi-box-arrow-in-right text-primary"></i> OR Input:
+                  <strong>{{ selectedTest.input }}</strong></span>
+                <span title="OpenRouter Output"><i class="bi bi-box-arrow-right text-success"></i> OR Output: <strong>{{
+                    selectedTest.output }}</strong></span>
+                <span v-if="selectedTest.or_reasoning" title="OpenRouter Reasoning" class="text-warning"><i
+                    class="bi bi-lightbulb-fill"></i> OR Reasoning: <strong>{{ selectedTest.or_reasoning
+                    }}</strong></span>
+                <span title="Total Tokens"><i class="bi bi-calculator"></i> Total: <strong>{{ selectedTest.total
+                    }}</strong></span>
+              </div>
+              <div
+                v-if="selectedTest.native_input != null || selectedTest.native_output != null || selectedTest.native_reasoning != null || selectedTest.native_cached != null"
+                class="d-flex gap-3 flex-wrap mt-1 pt-1 border-top">
+                <span v-if="selectedTest.native_input != null" title="Native Provider Input" class="text-info"><i
+                    class="bi bi-hdd"></i> Native Input: <strong>{{ selectedTest.native_input }}</strong></span>
+                <span v-if="selectedTest.native_output != null" title="Native Provider Output" class="text-info"><i
+                    class="bi bi-hdd-fill"></i> Native Output: <strong>{{ selectedTest.native_output }}</strong></span>
+                <span v-if="selectedTest.native_reasoning" title="Native Provider Reasoning" class="text-warning"><i
+                    class="bi bi-lightbulb"></i> Native Reasoning: <strong>{{ selectedTest.native_reasoning
+                    }}</strong></span>
+                <span v-if="selectedTest.native_cached" title="Cached Tokens" class="text-secondary"><i
+                    class="bi bi-archive"></i> Cached: <strong>{{ selectedTest.native_cached }}</strong></span>
+              </div>
             </div>
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
           </div>
@@ -1002,6 +1083,22 @@
           return runs.value[0];
         });
 
+        const canResumeRun = computed(() => {
+          const run = selectedRunDetails.value;
+          if (!run) return false;
+          // Solo si tiene model_ids guardados (versión nueva) y faltan tests o el summary no ha sido generado (indicando que falló al final)
+          if (!run.prompt_set_id || !run.model_ids) return false;
+
+          let totalSuccess = 0;
+          groupedResults.value.forEach(g => {
+            totalSuccess += g.successCount;
+          });
+          const expectedTotal = run.model_count * 3; // 3 idiomas
+
+          // Permitir reanudar si faltan tests o si no se ha generado el resumen
+          return totalSuccess < expectedTotal || !run.summary;
+        });
+
         function selectResultModel(name) {
           selectedModelName.value = selectedModelName.value === name ? null : name;
         }
@@ -1044,7 +1141,22 @@
           return 'diff-neutral';
         }
 
+        function hasReasoningTokens(modelGroup) {
+          // Check if any result for this model has reasoning tokens
+          return Object.values(modelGroup.results).some(r => r.or_reasoning && r.or_reasoning > 0);
+        }
 
+        function isReasoningModel(modelName) {
+          // Detect known reasoning models by name patterns
+          const reasoningPatterns = [
+            /\bo1\b/i,           // OpenAI o1, o1-mini, o1-preview
+            /\bo3\b/i,           // OpenAI o3, o3-mini
+            /deepseek.*r1/i,     // DeepSeek R1
+            /reasoning/i,        // Any model with "reasoning" in name
+            /think/i             // Models with "think" or "thinking"
+          ];
+          return reasoningPatterns.some(pattern => pattern.test(modelName));
+        }
 
         function getRecommendedLang(modelGroup) {
           const results = modelGroup.results;
@@ -1322,6 +1434,42 @@
           });
         }
 
+        function resumeRun() {
+          if (!selectedRunId.value) return;
+          const runInfo = selectedRunDetails.value;
+          const statusWarning = runInfo.status === 'running'
+            ? ' (Nota: Este test figura como en ejecución. Si no está corriendo actualmente, puedes reanudarlo con seguridad.)'
+            : '';
+
+          showConfirm({
+            title: 'Continuar Benchmark',
+            message: `¿Reanudar el benchmark interrumpido? Se saltarán los modelos que ya finalizaron correctamente.${statusWarning}`,
+            icon: 'bi bi-play-circle',
+            confirmLabel: 'Reanudar',
+            confirmIcon: 'bi bi-play-circle',
+            onConfirm: async () => {
+              try {
+                const res = await fetch(`/api/benchmark/resume/${selectedRunId.value}`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await res.json();
+                if (data.success) {
+                  isRunning.value = true;
+                  currentStatus.value = 'Reanudando benchmark...';
+                  // Recargar resultados para limpiar errores de la UI
+                  loadResults();
+                } else {
+                  console.error('Error del servidor:', data.error);
+                  alert('Error: ' + (data.error || 'No se pudo reanudar el benchmark'));
+                }
+              } catch (e) {
+                console.error('Error reanudando benchmark:', e);
+              }
+            }
+          });
+        }
+
         function connectWebSocket() {
           const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
           ws.value = new WebSocket(`${protocol}//${window.location.host}`);
@@ -1408,13 +1556,24 @@
           const runInfo = selectedRunDetails.value;
           const title = runInfo ? `Benchmark Run #${runInfo.id} - ${formatDate(runInfo.started_at)}` : 'Token Benchmark Results';
 
+          // Build detailed rows with token discrimination
           let rowsHtml = '';
           for (const g of groupedResults.value) {
+            const hasReasoning = Object.values(g.results).some(r => r.or_reasoning || r.native_reasoning);
             rowsHtml += `
               <tr>
-                <td><strong>${g.name}</strong></td>
+                <td><strong>${g.name}${hasReasoning ? ' <span class="badge reasoning-badge">Reasoning</span>' : ''}</strong></td>
+                <td>${g.results.en ? g.results.en.input : '-'}</td>
+                <td>${g.results.en ? g.results.en.output : '-'}</td>
+                <td>${g.results.en && g.results.en.or_reasoning ? g.results.en.or_reasoning : '-'}</td>
                 <td>${g.results.en ? g.results.en.total : (g.errors.en ? '<span class="error" title="' + g.errors.en + '">Error</span>' : '-')}</td>
+                <td>${g.results.es ? g.results.es.input : '-'}</td>
+                <td>${g.results.es ? g.results.es.output : '-'}</td>
+                <td>${g.results.es && g.results.es.or_reasoning ? g.results.es.or_reasoning : '-'}</td>
                 <td>${g.results.es ? g.results.es.total : (g.errors.es ? '<span class="error" title="' + g.errors.es + '">Error</span>' : '-')}</td>
+                <td>${g.results.zh ? g.results.zh.input : '-'}</td>
+                <td>${g.results.zh ? g.results.zh.output : '-'}</td>
+                <td>${g.results.zh && g.results.zh.or_reasoning ? g.results.zh.or_reasoning : '-'}</td>
                 <td>${g.results.zh ? g.results.zh.total : (g.errors.zh ? '<span class="error" title="' + g.errors.zh + '">Error</span>' : '-')}</td>
                 <td><span class="badge">${(getRecommendedLang(g) || '-').toUpperCase()}</span></td>
               </tr>
@@ -1443,14 +1602,15 @@
           const exportChartEN = JSON.stringify(groupedResults.value.map(g => g.results.en?.total ?? null));
           const exportChartES = JSON.stringify(groupedResults.value.map(g => g.results.es?.total ?? null));
           const exportChartZH = JSON.stringify(groupedResults.value.map(g => g.results.zh?.total ?? null));
-          // Stacked chart data (avg input/output per model, sorted by total)
+          // Stacked chart data (avg input/output/reasoning per model, sorted by total)
           const exportStackItems = JSON.stringify(
             groupedResults.value.map(g => {
               const rows = ['en', 'es', 'zh'].map(l => g.results[l]).filter(Boolean);
               const avgIn = rows.length ? Math.round(rows.reduce((a, r) => a + r.input, 0) / rows.length) : 0;
               const avgOut = rows.length ? Math.round(rows.reduce((a, r) => a + r.output, 0) / rows.length) : 0;
-              return { name: g.name, avgIn, avgOut };
-            }).sort((a, b) => (a.avgIn + a.avgOut) - (b.avgIn + b.avgOut))
+              const avgReasoning = rows.length ? Math.round(rows.reduce((a, r) => a + (r.or_reasoning || 0), 0) / rows.length) : 0;
+              return { name: g.name, avgIn, avgOut, avgReasoning };
+            }).sort((a, b) => (a.avgIn + a.avgOut + a.avgReasoning) - (b.avgIn + b.avgOut + b.avgReasoning))
           );
 
           const htmlContent = `<!DOCTYPE html>
@@ -1557,6 +1717,14 @@
       display: inline-block;
       border: 1px solid #d1fae5;
     }
+    .reasoning-badge {
+      background: #fef3c7;
+      color: #92400e;
+      border: 1px solid #fde68a;
+      font-size: 0.7rem;
+      padding: 0.2rem 0.5rem;
+      margin-left: 0.5rem;
+    }
     .error {
       color: var(--error);
       font-weight: 600;
@@ -1644,20 +1812,40 @@
 
     <div class="card">
       <h2>Resumen de Resultados</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Modelo</th>
-            <th>Total Tokens (EN)</th>
-            <th>Total Tokens (ES)</th>
-            <th>Total Tokens (ZH)</th>
-            <th>Recomendado</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rowsHtml}
-        </tbody>
-      </table>
+      <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1.5rem;">
+        <strong>Nota:</strong> Los tokens de <em>Reasoning</em> representan el razonamiento interno del modelo (como en o1, deepseek-r1).
+        Se cobran al mismo precio que los output tokens.
+      </p>
+      <div style="overflow-x: auto;">
+        <table style="font-size: 0.85rem;">
+          <thead>
+            <tr>
+              <th rowspan="2" style="vertical-align: middle;">Modelo</th>
+              <th colspan="4" style="text-align: center; background-color: #dbeafe; border-bottom: 2px solid #bfdbfe;">English (EN)</th>
+              <th colspan="4" style="text-align: center; background-color: #dcfce7; border-bottom: 2px solid #bbf7d0;">Español (ES)</th>
+              <th colspan="4" style="text-align: center; background-color: #fee2e2; border-bottom: 2px solid #fecaca;">中文 (ZH)</th>
+              <th rowspan="2" style="vertical-align: middle;">Recomendado</th>
+            </tr>
+            <tr>
+              <th style="background-color: #eff6ff;">Input</th>
+              <th style="background-color: #eff6ff;">Output</th>
+              <th style="background-color: #eff6ff;">Reasoning</th>
+              <th style="background-color: #eff6ff;">Total</th>
+              <th style="background-color: #f0fdf4;">Input</th>
+              <th style="background-color: #f0fdf4;">Output</th>
+              <th style="background-color: #f0fdf4;">Reasoning</th>
+              <th style="background-color: #f0fdf4;">Total</th>
+              <th style="background-color: #fef2f2;">Input</th>
+              <th style="background-color: #fef2f2;">Output</th>
+              <th style="background-color: #fef2f2;">Reasoning</th>
+              <th style="background-color: #fef2f2;">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <div class="chart-section">
@@ -1721,8 +1909,9 @@
         data: {
           labels: stackItems.map(i=>i.name),
           datasets: [
-            { label:'Input',  data:stackItems.map(i=>i.avgIn),  backgroundColor:'rgba(13,110,253,0.7)', borderWidth:1 },
-            { label:'Output', data:stackItems.map(i=>i.avgOut), backgroundColor:'rgba(255,193,7,0.7)',  borderWidth:1 }
+            { label:'Input',     data:stackItems.map(i=>i.avgIn),        backgroundColor:'rgba(13,110,253,0.7)', borderWidth:1 },
+            { label:'Output',    data:stackItems.map(i=>i.avgOut),       backgroundColor:'rgba(25,135,84,0.7)',  borderWidth:1 },
+            { label:'Reasoning', data:stackItems.map(i=>i.avgReasoning), backgroundColor:'rgba(255,193,7,0.7)',  borderWidth:1 }
           ]
         },
         options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
@@ -1730,7 +1919,7 @@
           scales:{ x:{stacked:true,beginAtZero:true,title:{display:true,text:'Tokens'}}, y:{stacked:true,ticks:{font:{size:9}}} }
         }
       });
-      const ranked = stackItems.map(i=>({name:i.name, avg:Math.round((i.avgIn+i.avgOut))})).sort((a,b)=>a.avg-b.avg);
+      const ranked = stackItems.map(i=>({name:i.name, avg:Math.round((i.avgIn+i.avgOut+i.avgReasoning))})).sort((a,b)=>a.avg-b.avg);
       new Chart(document.getElementById('expChartRank'), {
         type: 'bar',
         data: {
@@ -1844,13 +2033,14 @@
           if (chartStack) chartStack.destroy();
           const data = groupedResults.value;
           if (!data.length) return;
-          // Average input/output per model
+          // Average input/output/reasoning per model
           const items = data.map(g => {
             const rows = LANGS.map(l => g.results[l]).filter(Boolean);
             const avgIn = rows.length ? Math.round(rows.reduce((a, r) => a + r.input, 0) / rows.length) : 0;
             const avgOut = rows.length ? Math.round(rows.reduce((a, r) => a + r.output, 0) / rows.length) : 0;
-            return { name: shortName(g.name), avgIn, avgOut };
-          }).sort((a, b) => (a.avgIn + a.avgOut) - (b.avgIn + b.avgOut));
+            const avgReasoning = rows.length ? Math.round(rows.reduce((a, r) => a + (r.or_reasoning || 0), 0) / rows.length) : 0;
+            return { name: shortName(g.name), avgIn, avgOut, avgReasoning };
+          }).sort((a, b) => (a.avgIn + a.avgOut + a.avgReasoning) - (b.avgIn + b.avgOut + b.avgReasoning));
           chartStack = new Chart(chartStackEl.value, {
             type: 'bar',
             data: {
@@ -1865,6 +2055,12 @@
                 {
                   label: 'Output',
                   data: items.map(i => i.avgOut),
+                  backgroundColor: 'rgba(25,135,84,0.7)',
+                  borderWidth: 1,
+                },
+                {
+                  label: 'Reasoning',
+                  data: items.map(i => i.avgReasoning),
                   backgroundColor: 'rgba(255,193,7,0.7)',
                   borderWidth: 1,
                 }
@@ -1992,6 +2188,8 @@
           getInputDiffClass,
           getTotalDiff,
           getTotalDiffClass,
+          hasReasoningTokens,
+          isReasoningModel,
           getRecommendedLang,
           recommendations,
           formatDate,
@@ -2017,7 +2215,9 @@
           chartRadarEl,
           selectedTest,
           showTestDetails,
-          renderMarkdown
+          renderMarkdown,
+          canResumeRun,
+          resumeRun
         };
       }
     }).mount('#app');

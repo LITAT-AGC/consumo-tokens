@@ -30,7 +30,8 @@ Abre http://localhost:3050 en tu navegador. Desde la interfaz puedes:
 2. Ejecutar benchmarks con seguimiento en tiempo real
 3. Ver resultados en tabla con datos de tokens por idioma
 4. Análisis automáticos generados por IA al finalizar cada benchmark
-5. Consultar historial de ejecuciones
+5. Consultar historial de ejecuciones y exportar a HTML
+6. Continuar y reanudar benchmarks interrumpidos de forma inteligente
 
 ### Analizar resultados
 

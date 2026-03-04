@@ -59,6 +59,8 @@ try { db.exec(`ALTER TABLE runs ADD COLUMN temperature REAL DEFAULT 0.1;`); } ca
 try { db.exec(`ALTER TABLE results ADD COLUMN prompt_text TEXT;`); } catch (err) { }
 try { db.exec(`ALTER TABLE results ADD COLUMN response_text TEXT;`); } catch (err) { }
 try { db.exec(`ALTER TABLE runs ADD COLUMN summary TEXT;`); } catch (err) { }
+try { db.exec(`ALTER TABLE runs ADD COLUMN prompt_set_id INTEGER;`); } catch (err) { }
+try { db.exec(`ALTER TABLE runs ADD COLUMN model_ids TEXT;`); } catch (err) { }
 
 // Columnas para tokens nativos del proveedor (vía /api/v1/generation)
 try { db.exec(`ALTER TABLE results ADD COLUMN native_input INTEGER;`); } catch (err) { }
@@ -66,14 +68,16 @@ try { db.exec(`ALTER TABLE results ADD COLUMN native_output INTEGER;`); } catch 
 try { db.exec(`ALTER TABLE results ADD COLUMN native_reasoning INTEGER;`); } catch (err) { }
 try { db.exec(`ALTER TABLE results ADD COLUMN native_cached INTEGER;`); } catch (err) { }
 try { db.exec(`ALTER TABLE results ADD COLUMN generation_id TEXT;`); } catch (err) { }
+// Columna para tokens de razonamiento reportados por OpenRouter (no nativos)
+try { db.exec(`ALTER TABLE results ADD COLUMN or_reasoning INTEGER;`); } catch (err) { }
 
 
-function createRun(source, modelCount, maxTokens = 300, temperature = 0.1) {
+function createRun(source, modelCount, maxTokens = 300, temperature = 0.1, promptSetId = null, modelIds = []) {
   const stmt = db.prepare(`
-    INSERT INTO runs (started_at, model_count, source, max_tokens, temperature)
-    VALUES (datetime('now'), ?, ?, ?, ?)
+    INSERT INTO runs (started_at, model_count, source, max_tokens, temperature, prompt_set_id, model_ids)
+    VALUES (datetime('now'), ?, ?, ?, ?, ?, ?)
   `);
-  const result = stmt.run(modelCount, source, maxTokens, temperature);
+  const result = stmt.run(modelCount, source, maxTokens, temperature, promptSetId, JSON.stringify(modelIds));
   return result.lastInsertRowid;
 }
 
@@ -92,9 +96,10 @@ function saveResult(runId, data) {
       run_id, model, lang, input, output, total, error, 
       prompt_text, response_text, 
       native_input, native_output, native_reasoning, native_cached, generation_id,
+      or_reasoning,
       created_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
   `);
   return stmt.run(
     runId,
@@ -110,7 +115,8 @@ function saveResult(runId, data) {
     data.native_output ?? null,
     data.native_reasoning ?? null,
     data.native_cached ?? null,
-    data.generation_id || null
+    data.generation_id || null,
+    data.or_reasoning ?? null
   );
 }
 
@@ -134,6 +140,22 @@ function getResultsByRun(runId) {
   const run = db.prepare('SELECT * FROM runs WHERE id = ?').get(runId);
   const results = db.prepare('SELECT * FROM results WHERE run_id = ? ORDER BY created_at ASC').all(runId);
   return { run, results };
+}
+
+function getRun(runId) {
+  const run = db.prepare('SELECT * FROM runs WHERE id = ?').get(runId);
+  if (run && run.model_ids) {
+    try {
+      run.model_ids = JSON.parse(run.model_ids);
+    } catch (e) {
+      run.model_ids = [];
+    }
+  }
+  return run;
+}
+
+function deleteFailedResults(runId) {
+  db.prepare('DELETE FROM results WHERE run_id = ? AND error IS NOT NULL').run(runId);
 }
 
 function clearOldRuns() {
@@ -218,9 +240,9 @@ function initDefaultPromptSet() {
       const path = require('path');
       const promptsDir = path.join(__dirname, 'prompts');
       const langs = ['en', 'es', 'zh'];
-      
+
       const newSetId = createPromptSet('Default Prompts');
-      
+
       for (const lang of langs) {
         const filePath = path.join(promptsDir, `${lang}.md`);
         if (fs.existsSync(filePath)) {
@@ -245,8 +267,10 @@ module.exports = {
   saveResult,
   getAllResults,
   getResultsByRun,
+  getRun,
   clearOldRuns,
   deleteRun,
+  deleteFailedResults,
   saveRunSummary,
   getPromptSets,
   getPromptSet,

@@ -4,7 +4,7 @@ const cors = require('cors');
 const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
-const { getAllResults, getResultsByRun, deleteRun, getPromptSets, createPromptSet, updatePromptSet, deletePromptSet, getPromptsBySet, updatePrompt } = require('./database');
+const { getAllResults, getResultsByRun, getRun, deleteRun, getPromptSets, createPromptSet, updatePromptSet, deletePromptSet, getPromptsBySet, updatePrompt } = require('./database');
 const { BenchmarkRunner, fetchModelsCatalog, getAvailableFreeModels, getAllPaidModels, selectPaidModelsFromWhitelist } = require('./benchmark-runner');
 const fs = require('fs/promises');
 const { translatePrompt } = require('./translate-prompt');
@@ -223,6 +223,60 @@ app.post('/api/benchmark/start', async (req, res) => {
     res.json({
       success: true,
       message: `Benchmark iniciado con ${models.length} modelos`,
+      modelsCount: models.length
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// API: Reanudar benchmark
+app.post('/api/benchmark/resume/:runId', async (req, res) => {
+  try {
+    const runId = parseInt(req.params.runId);
+    if (!runId) return res.status(400).json({ error: 'ID de run no válido' });
+
+    const run = getRun(runId);
+    if (!run) return res.status(404).json({ error: 'Run no encontrado' });
+
+    if (!run.prompt_set_id || !run.model_ids || run.model_ids.length === 0) {
+      return res.status(400).json({ error: 'Este run es antiguo y no tiene la configuración guardada para ser reanudado.' });
+    }
+
+    const { model_ids: modelIds, prompt_set_id: promptSetId, source, max_tokens: maxTokens } = run;
+
+    const catalog = await fetchModelsCatalog();
+    let models;
+
+    if (source === 'paid') {
+      models = selectPaidModelsFromWhitelist(catalog, modelIds);
+    } else {
+      const freeModels = getAvailableFreeModels(catalog);
+      models = freeModels.filter(m => modelIds.includes(m.id));
+    }
+
+    if (models.length === 0) {
+      return res.status(400).json({ error: 'No se encontraron modelos válidos' });
+    }
+
+    const runner = new BenchmarkRunner({
+      models,
+      source,
+      maxTokens,
+      promptSetId,
+      wss,
+      resumeRunId: runId
+    });
+
+    // Iniciar benchmark en background
+    runner.start().catch(err => {
+      console.error('❌ Error fatal al reanudar benchmark:', err);
+    });
+
+    res.json({
+      success: true,
+      message: `Reanudando benchmark con ${models.length} modelos`,
       modelsCount: models.length
     });
 
